@@ -1,0 +1,203 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Give your Spooky light ears",
+        "description": "Pick the light you paired with ZHA or Zigbee2MQTT — a XIAO Spooky Sound (SpookyLab XIAO-C6-SpookySound) or a NanoC6 Spooky Lights. Its entities are mapped automatically on the next step. Leave empty to map them by hand.",
+        "data": {
+          "device_id": "Light"
+        }
+      },
+      "entities": {
+        "title": "Which entity does what?",
+        "description": "{found} entities were recognised automatically. A NanoC6 Spooky Lights has no microphone: just map its Effect to let it follow the soundtrack.",
+        "data": {
+          "effect_number": "Effect (endpoint 12) — for following the soundtrack",
+          "cue_number": "Sound cue (endpoint 18)",
+          "source_number": "Sound source (endpoint 16)",
+          "event_sensor": "Sound event (endpoint 20)",
+          "level_sensor": "Sound level (endpoint 19)",
+          "sensitivity_number": "Mic sensitivity (endpoint 17)",
+          "light": "Light (endpoint 10)"
+        }
+      },
+      "music": {
+        "title": "The soundtrack",
+        "description": "All optional — you can change these later under Configure.",
+        "data": {
+          "media_player": "Media player to follow (optional)",
+          "sendspin": "Sync to the music with Sendspin (Music Assistant visualizer)",
+          "sendspin_host": "Music Assistant host (leave empty to use the Music Assistant integration's)",
+          "lead_ms": "Light lead time"
+        },
+        "data_description": {
+          "media_player": "Pick the Music Assistant player for your Halloween speaker. When its track sounds like a storm, a fire, a heartbeat, a cauldron or a haunting, the light switches to the matching effect, and back when it stops.",
+          "sendspin": "Needs the speaker to be a Sendspin player in Music Assistant (e.g. the SendspinDroid app). Installs the aiosendspin library when first enabled.",
+          "sendspin_host": "e.g. 192.168.1.10 or mass.local. The Sendspin port (8927) is added for you.",
+          "lead_ms": "How early to send each cue so the flash lands on the sound: the delay from Home Assistant to the light over Zigbee."
+        }
+      }
+    },
+    "error": {
+      "nothing_mapped": "Map at least the effect, the sound cue, the sound source or the sound event."
+    },
+    "abort": {
+      "already_configured": "This light already has ears."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Re-map the light's entities",
+        "data": {
+          "effect_number": "Effect (endpoint 12) — for following the soundtrack",
+          "cue_number": "Sound cue (endpoint 18)",
+          "source_number": "Sound source (endpoint 16)",
+          "event_sensor": "Sound event (endpoint 20)",
+          "level_sensor": "Sound level (endpoint 19)",
+          "sensitivity_number": "Mic sensitivity (endpoint 17)",
+          "light": "Light (endpoint 10)"
+        }
+      },
+      "music": {
+        "title": "The soundtrack",
+        "description": "Keywords are matched as whole words in the track's title, artist and album, in this order (storms win over fires). Separate them with commas.",
+        "data": {
+          "media_player": "Media player to follow (optional)",
+          "sendspin": "Sync to the music with Sendspin (Music Assistant visualizer)",
+          "sendspin_host": "Music Assistant host (leave empty to use the Music Assistant integration's)",
+          "lead_ms": "Light lead time",
+          "keywords_storm": "Storm → Lightning Storm: keywords",
+          "keywords_fire": "Fire → Candle Flicker: keywords",
+          "keywords_heartbeat": "Heartbeat → Tell-Tale Heart: keywords",
+          "keywords_cauldron": "Cauldron → Witch's Cauldron: keywords",
+          "keywords_haunting": "Haunting → Poltergeist: keywords"
+        },
+        "data_description": {
+          "media_player": "Pick the Music Assistant player for your Halloween speaker. When its track sounds like a storm, a fire, a heartbeat, a cauldron or a haunting, the light switches to the matching effect, and back when it stops.",
+          "sendspin": "Needs the speaker to be a Sendspin player in Music Assistant (e.g. the SendspinDroid app). Installs the aiosendspin library when first enabled.",
+          "sendspin_host": "e.g. 192.168.1.10 or mass.local. The Sendspin port (8927) is added for you.",
+          "lead_ms": "How early to send each cue so the flash lands on the sound: the delay from Home Assistant to the light over Zigbee."
+        }
+      }
+    },
+    "error": {
+      "nothing_mapped": "Map at least the effect, the sound cue, the sound source or the sound event."
+    }
+  },
+  "entity": {
+    "select": {
+      "sound_source": {
+        "name": "Sound source",
+        "state": {
+          "off": "Off",
+          "microphone": "Microphone",
+          "remote": "Home Assistant / Music Assistant",
+          "both": "Microphone + Home Assistant"
+        }
+      }
+    },
+    "event": {
+      "sound_event": {
+        "name": "Sound heard",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "thunder": "Thunder",
+              "fire": "Fire crackling",
+              "loud": "Scream"
+            }
+          }
+        }
+      }
+    },
+    "sensor": {
+      "soundtrack_mood": {
+        "name": "Soundtrack mood",
+        "state": {
+          "none": "None",
+          "storm": "Storm",
+          "fire": "Fire",
+          "heartbeat": "Heartbeat",
+          "cauldron": "Cauldron",
+          "haunting": "Haunting"
+        }
+      },
+      "sendspin_status": {
+        "name": "Sendspin",
+        "state": {
+          "off": "Off",
+          "installing": "Installing",
+          "connecting": "Connecting",
+          "waiting": "Waiting for music",
+          "streaming": "Streaming",
+          "no_server": "No Music Assistant server",
+          "error": "Error"
+        }
+      }
+    },
+    "switch": {
+      "follow_music": {
+        "name": "Follow the soundtrack"
+      },
+      "music_sync": {
+        "name": "Sync lights to the music"
+      }
+    },
+    "number": {
+      "lead_time": {
+        "name": "Light lead time"
+      }
+    },
+    "button": {
+      "test_thunder": {
+        "name": "Test thunder"
+      }
+    }
+  },
+  "selector": {
+    "cue": {
+      "options": {
+        "thunder": "Thunder (a lightning strike)",
+        "rumble": "Rumble (sky glow)",
+        "fire": "Fire level",
+        "crackle": "Crackles",
+        "beat": "Heartbeat",
+        "peak": "Bang",
+        "clear": "Clear"
+      }
+    }
+  },
+  "services": {
+    "send_cue": {
+      "name": "Send sound cue",
+      "description": "Make the light react as if it had heard something: a thunderclap, a burst of crackles, a heartbeat… Handy for doorbell jump scares.",
+      "fields": {
+        "device_id": {
+          "name": "Light",
+          "description": "Which Spooky Sound light(s). Leave empty for all of them."
+        },
+        "cue": {
+          "name": "Cue",
+          "description": "What the light should react to."
+        },
+        "strength": {
+          "name": "Strength",
+          "description": "How hard (0–1). For fire and rumble, the level."
+        },
+        "count": {
+          "name": "Count",
+          "description": "For crackles: how many, spread over about 0.4 s."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "no_target": {
+      "message": "No Spooky Sound light matches that device."
+    },
+    "no_cue_entity": {
+      "message": "That light has no Sound cue entity mapped (only the XIAO Spooky Sound firmware has one)."
+    }
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "domain": "spooky_sound",
+  "name": "Spooky Sound",
+  "codeowners": ["@rightiswrong"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/rightiswrong/esp32c6-spooky-sound",
+  "integration_type": "device",
+  "iot_class": "local_push",
+  "issue_tracker": "https://github.com/rightiswrong/esp32c6-spooky-sound/issues",
+  "loggers": ["aiosendspin"],
+  "requirements": [],
+  "version": "0.1.0"
+}

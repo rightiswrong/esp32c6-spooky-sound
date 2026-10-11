@@ -1,0 +1,139 @@
+name: Release
+
+# Publishes a GitHub release when either
+#   * main receives a commit whose manifest.json "version" has no v<version> tag
+#     yet (bump the version, push, done — Actions creates the tag), or
+#   * someone pushes a tag like v0.1.0 directly.
+# Each release carries:
+#   xiao-spooky-sound-<tag>-factory.bin     single image, flash at 0x0 (easiest)
+#   xiao-spooky-sound-<tag>-app.bin         app only, for re-flashing at 0x10000
+#   xiao-spooky-sound-<tag>-bootloader.bin  / -partitions.bin / .elf (debugging)
+#   spooky_sound-<tag>.zip                  the Home Assistant integration
+#   xiao_spooky_sound.mjs                   optional Zigbee2MQTT converter
+#   SHA256SUMS.txt
+# Run it manually (workflow_dispatch) to get the same files as a build artifact
+# without publishing a release.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  FQBN: esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc,PartitionScheme=zigbee_zczr,ZigbeeMode=zczr
+  SKETCH: firmware/XIAO_SpookySound
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide tag and whether to publish
+        run: |
+          manifest=$(python3 -c "import json;print(json.load(open('custom_components/spooky_sound/manifest.json'))['version'])")
+          fw=$(sed -n 's/^#define FW_VERSION *"\(.*\)"/\1/p' "$SKETCH/config.h")
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tag="$GITHUB_REF_NAME"; publish=true
+          else
+            tag="v$manifest"
+            if git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null; then
+              publish=false   # this version is already released
+            else
+              publish=$([[ "$GITHUB_REF" == refs/heads/main ]] && echo true || echo false)
+            fi
+          fi
+          echo "tag=$tag manifest=$manifest firmware=$fw publish=$publish"
+          test "${tag#v}" = "$manifest" || { echo "::error::tag $tag != manifest $manifest"; exit 1; }
+          test "${tag#v}" = "$fw" || { echo "::error::tag $tag != firmware FW_VERSION $fw"; exit 1; }
+          echo "TAG=$tag" >> "$GITHUB_ENV"
+          echo "PUBLISH=$publish" >> "$GITHUB_ENV"
+
+      - name: Firmware host tests
+        run: tools/hosttest/run.sh
+
+      - name: Integration logic tests
+        run: python3 -m unittest discover -s tests
+
+      - uses: arduino/setup-arduino-cli@v2
+
+      - name: Install the Espressif ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+          arduino-cli core list | tee core-version.txt
+
+      - name: Compile for XIAO ESP32-C6 (Zigbee router)
+        run: arduino-cli compile --fqbn "$FQBN" --build-path build --warnings default "$SKETCH"
+
+      - name: Package
+        run: |
+          set -euo pipefail
+          v="$TAG"
+          mkdir -p dist
+          ls -la build/*.bin build/*.elf
+          b=build/XIAO_SpookySound.ino
+          cp "$b.bin"            "dist/xiao-spooky-sound-$v-app.bin"
+          cp "$b.bootloader.bin" "dist/xiao-spooky-sound-$v-bootloader.bin"
+          cp "$b.partitions.bin" "dist/xiao-spooky-sound-$v-partitions.bin"
+          cp "$b.elf"            "dist/xiao-spooky-sound-$v.elf"
+          if [ -f "$b.merged.bin" ]; then
+            cp "$b.merged.bin" "dist/xiao-spooky-sound-$v-factory.bin"
+          else
+            pip install --quiet esptool
+            boot_app0=$(find ~/.arduino15/packages/esp32/hardware -name boot_app0.bin | head -n1)
+            python3 -m esptool --chip esp32c6 merge_bin -o "dist/xiao-spooky-sound-$v-factory.bin" \
+              0x0 "$b.bootloader.bin" 0x8000 "$b.partitions.bin" 0xe000 "$boot_app0" 0x10000 "$b.bin"
+          fi
+          (cd custom_components/spooky_sound && zip -qr "../../dist/spooky_sound-$v.zip" . -x '__pycache__/*')
+          cp zigbee2mqtt/xiao_spooky_sound.mjs dist/
+          (cd dist && sha256sum * > SHA256SUMS.txt)
+          cat dist/SHA256SUMS.txt
+
+      - name: Release notes
+        run: |
+          v="$TAG"
+          {
+            echo "## Flash the XIAO ESP32-C6"
+            echo
+            echo "Easiest: open https://web.esphome.io in Chrome/Edge, connect the XIAO over USB-C,"
+            echo "choose **Install** and pick \`xiao-spooky-sound-$v-factory.bin\`."
+            echo "(If it won't connect, hold BOOT while plugging the XIAO in.)"
+            echo
+            echo "Or with esptool:"
+            echo
+            echo '```'
+            echo "esptool --chip esp32c6 write_flash 0x0 xiao-spooky-sound-$v-factory.bin"
+            echo '```'
+            echo
+            echo "Then pair it with ZHA (Add device) and install the integration via HACS — see the README."
+            echo
+            echo "## Build"
+            echo
+            echo "FQBN \`$FQBN\`, Arduino core:"
+            echo
+            echo '```'
+            cat core-version.txt
+            echo '```'
+          } > release-notes.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiao-spooky-sound-${{ env.TAG }}
+          path: dist/
+
+      - name: Publish GitHub release
+        if: env.PUBLISH == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          target_commitish: ${{ github.sha }}
+          name: Spooky Sound ${{ env.TAG }}
+          body_path: release-notes.md
+          files: dist/*

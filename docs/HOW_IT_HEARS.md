@@ -23,6 +23,27 @@ other hits, orange ticks are crackles, and red dashed lines are events sent to H
   gives 16 kHz, a gentle anti-alias filter, and half the ADC noise power. It then feeds the
   analyser 128 samples at a time, one 8 ms frame.
 
+### No microphone
+
+An empty Grove port with no pull would float, and a floating ADC pin wanders and spikes. The
+firmware enables the pin's internal pull-down (~45 kΩ) after the ADC driver has configured the
+pad, so an empty port reads 0 V. The Grove mic's amplifier output holds its ~half-supply bias
+easily against that.
+
+Every 0.25 s the analyser looks at the raw peak:
+
+* **Peak < 200 counts:** that window is empty. The first such window, or 4 in a row once a mic
+  has been seen, means *absent*. The analyser then emits nothing (no hits, crackles, events,
+  level or rumble), so only remote cues drive the effects.
+* **Any other window:** *present*. If the mic was absent before, the analysis **restarts**: the
+  DC tracker re-snaps to the new bias, and the filters, references and warm-up start over.
+  Without that, the jump from 0 V to the mic's bias would pass the DC tracker as a huge, slow
+  "bang".
+
+Tested: 20 s of empty port, with and without 20 switching-noise spikes per second, gives
+nothing. Plugging a mic in mid-show gives no phantom hit, then the next thunderclap is heard and
+reported. Pulling it out gives silence, with the mic marked absent 0.99 s later.
+
 ## 2. Bands, in fixed point
 
 The C6 has no FPU, so the per-sample work is integer: about 10 multiply-accumulates per sample,
@@ -141,9 +162,9 @@ persistence, plus up to 20 ms waiting for the next render frame. The P9813 bit-b
 
 ## 8. What the tests check
 
-`tools/hosttest/run.sh` runs 908 checks, twice (two Arduino Zigbee API variants), under
+`tools/hosttest/run.sh` runs 926 checks, twice (two Arduino Zigbee API variants), under
 AddressSanitizer and UBSan. They include: silence, rails and a disconnected input stay quiet;
 thunder (room and small speaker) strikes within 25 ms and is reported once as thunder; fire
 crackles ≥ 70 % recall and precision, with no booms and one FIRE event; kicks are heard but never
 called thunder; a scream is LOUD and never rumble; sensitivity works both ways; the 69-scenario
-robustness sweep; and the end-to-end Zigbee, OLED, button and NVS paths.
+robustness sweep; the no-microphone cases (empty port, spikes, plug-in, pull-out, a cue-only show); and the end-to-end Zigbee, OLED, button and NVS paths.

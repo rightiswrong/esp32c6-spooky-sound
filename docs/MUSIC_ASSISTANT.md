@@ -32,6 +32,11 @@ LineageOS Echo Shows run the separate **SendspinDroid** app (Android 8+, APK fro
 They combine well. With *Sound source = Mic + Home Assistant*, the microphone and Sendspin
 both feed the same effects.
 
+**No microphone?** Hook 1 still switches effects by track. Hook 2 then provides all of the
+per-sound timing on its own, which is why it matters more without a mic: on a View-Assist-only
+Echo Show (no Sendspin), the effects follow the track's mood but animate on their own, not on
+each thunderclap.
+
 ## Hook 1 — follow the soundtrack
 
 In **Spooky Sound → Configure**, pick the player, preferably the **Music Assistant** entity

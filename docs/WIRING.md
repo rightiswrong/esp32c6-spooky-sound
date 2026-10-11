@@ -68,7 +68,11 @@ A note on boot: while the ROM bootloader runs, GPIO16 is its serial TX, so the f
 may show random colours until the firmware's first frame. Harmless. If it bothers you, add a
 100 kΩ pull-down on CI.
 
-## 4. The microphone
+## 4. The microphone (optional)
+
+Without one, leave the A0 port empty: the firmware detects that and follows Home Assistant /
+Music Assistant cues only (see the README's *Without a microphone*). Don't leave a bare Grove
+cable dangling from the port, since a long open wire picks up noise.
 
 * **Placement.** Point it at the speaker, 0.5–3 m away, away from the LEDs' power wiring. For
   the Echo Show, beside or below the screen works well.

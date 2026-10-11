@@ -78,8 +78,10 @@ ROLE_ENDPOINTS: dict[str, int] = {
     ROLE_EVENT: 20,
 }
 
-# Keywords: ZHA names entities from the ZCL "description" the firmware sets;
-# the Zigbee2MQTT converter in /zigbee2mqtt uses these property names.
+# Keywords: ZHA names entities from the ZCL "description" the firmware sets
+# (read once, at pairing); its unique_ids are "<ieee>-<endpoint>-<cluster>",
+# with "-analog_input" appended for sensors. The best-effort Zigbee2MQTT
+# converter in /contrib/zigbee2mqtt uses these property names.
 ROLE_KEYWORDS: dict[str, tuple[str, ...]] = {
     ROLE_SOURCE: ("sound_source",),
     ROLE_SENSITIVITY: ("sensitivity",),

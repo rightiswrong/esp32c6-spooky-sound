@@ -8,7 +8,7 @@
 
 // Keep in sync with custom_components/spooky_sound/manifest.json "version"
 // (the release workflow refuses to publish if they differ from the tag).
-#define FW_VERSION "0.1.0"
+#define FW_VERSION "0.2.0"
 
 // ---------------------------------------------------------------- Board pins
 // XIAO ESP32-C6 pin map (arduino-esp32 variants/XIAO_ESP32C6/pins_arduino.h):
@@ -75,7 +75,17 @@
 #define MA_PER_ONBOARD_CHANNEL 3     // the orange user LED is tiny
 
 // -------------------------------------------------------------------- Sound
+// No microphone? Nothing to change: the firmware notices an empty A0 port
+// (see MIC_PULLDOWN) and reacts to Home Assistant / Music Assistant cues only.
+// Set 0 to leave the A0 port completely alone (e.g. to use it for something
+// else); CI builds both. Can also be set from the compiler: -DMIC_ENABLED=0.
+#ifndef MIC_ENABLED
 #define MIC_ENABLED          1
+#endif
+// Enable the A0 pin's internal pull-down (~45 kΩ) so an empty port reads 0 V
+// instead of floating (a floating ADC pin "hears" random phantom bangs). The
+// Grove mic's amplifier output drives the pin easily against it.
+#define MIC_PULLDOWN         1
 // ADC runs at 32 kHz; pairs of samples are averaged (a crude anti-alias
 // filter) so the analyser works at 16 kHz in 8 ms frames of 128 samples.
 #define MIC_ADC_RATE_HZ      32000

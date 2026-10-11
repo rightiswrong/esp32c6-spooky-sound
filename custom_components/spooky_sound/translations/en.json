@@ -3,14 +3,14 @@
     "step": {
       "user": {
         "title": "Give your Spooky light ears",
-        "description": "Pick the light you paired with ZHA or Zigbee2MQTT — a XIAO Spooky Sound (SpookyLab XIAO-C6-SpookySound) or a NanoC6 Spooky Lights. Its entities are mapped automatically on the next step. Leave empty to map them by hand.",
+        "description": "Pick the light you paired with **ZHA** (Zigbee Home Automation) — a XIAO Spooky Sound (SpookyLab XIAO-C6-SpookySound) or a NanoC6 Spooky Lights. {found} unconfigured SpookyLab light(s) found in ZHA; if there's exactly one it's already selected. Its entities are mapped automatically on the next step. Zigbee2MQTT is supported on a best-effort basis; leave the field empty to map entities by hand.",
         "data": {
           "device_id": "Light"
         }
       },
       "entities": {
         "title": "Which entity does what?",
-        "description": "{found} entities were recognised automatically. A NanoC6 Spooky Lights has no microphone: just map its Effect to let it follow the soundtrack.",
+        "description": "{found} entities were recognised automatically. A NanoC6 Spooky Lights has no microphone: just map its Effect to let it follow the soundtrack. The raw ZHA Sound cue, Sound source and Sound event entities are hidden once Spooky Sound takes over (removing Spooky Sound shows them again).",
         "data": {
           "effect_number": "Effect (endpoint 12) — for following the soundtrack",
           "cue_number": "Sound cue (endpoint 18)",

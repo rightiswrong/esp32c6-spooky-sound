@@ -69,6 +69,33 @@ def _entity(hass: HomeAssistant, platform: str, key: str) -> str:
     raise AssertionError(f"no {platform} entity {key}")
 
 
+# What ZHA really creates for the light: numbers "<ieee>-<ep>-13" (Analog
+# Output), sensors "<ieee>-<ep>-12-analog_input" (Analog Input), named from
+# the firmware's ZCL description attribute.
+ZHA_ENTITIES = [
+    ("number", "12-13", "Effect"),
+    ("number", "13-13", "Effect speed"),
+    ("number", "15-13", "Spotlight pixel (0 = off)"),
+    ("number", "16-13", "Sound source (0 off,1 mic,2 remote,3 both)"),
+    ("number", "17-13", "Mic sensitivity"),
+    ("number", "18-13", "Sound cue"),
+    ("sensor", "11-12-analog_input", "Grove LEDs detected"),
+    ("sensor", "19-12-analog_input", "Sound level"),
+    ("sensor", "20-12-analog_input", "Sound event"),
+]
+
+
+def _zha_entities(hass: HomeAssistant, config_entry: MockConfigEntry, device_id: str) -> dict[str, str]:
+    reg = er.async_get(hass)
+    made = {}
+    for domain, suffix, name in ZHA_ENTITIES:
+        ent = reg.async_get_or_create(
+            domain, "zha", f"{IEEE}-{suffix}", device_id=device_id, original_name=name, config_entry=config_entry
+        )
+        made[name] = ent.entity_id
+    return made
+
+
 async def test_config_flow_maps_zha_entities(hass: HomeAssistant) -> None:
     """The flow finds the light's entities from their ZHA names / endpoints."""
     config_entry = MockConfigEntry(domain="zha")
@@ -80,24 +107,13 @@ async def test_config_flow_maps_zha_entities(hass: HomeAssistant) -> None:
         model="XIAO-C6-SpookySound",
         name="XIAO Spooky",
     )
-    reg = er.async_get(hass)
-    made = {}
-    for domain, ep, cluster, name in [
-        ("number", 12, 13, "Effect"),
-        ("number", 13, 13, "Effect speed"),
-        ("number", 16, 13, "Sound source (0 off,1 mic,2 remote,3 both)"),
-        ("number", 17, 13, "Mic sensitivity"),
-        ("number", 18, 13, "Sound cue"),
-        ("sensor", 19, 12, "Sound level"),
-        ("sensor", 20, 12, "Sound event"),
-    ]:
-        ent = reg.async_get_or_create(
-            domain, "zha", f"{IEEE}-{ep}-{cluster}", device_id=device.id, original_name=name, config_entry=config_entry
-        )
-        made[name] = ent.entity_id
+    made = _zha_entities(hass, config_entry, device.id)
 
     result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
     assert result["type"] is FlowResultType.FORM
+    # ZHA first: the only SpookyLab light in ZHA is pre-selected.
+    picker = {str(k): k.description for k in result["data_schema"].schema}
+    assert picker["device_id"]["suggested_value"] == device.id
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {"device_id": device.id})
     assert result["step_id"] == "entities"
     schema = result["data_schema"].schema
@@ -115,6 +131,45 @@ async def test_config_flow_maps_zha_entities(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "XIAO Spooky"
     assert result["data"]["cue_number"] == made["Sound cue"]
+
+
+async def test_raw_zha_entities_hidden_then_restored(hass: HomeAssistant) -> None:
+    """The raw ZHA cue/source/event entities hide behind ours, and come back on removal."""
+    zha_entry = MockConfigEntry(domain="zha")
+    zha_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=zha_entry.entry_id, identifiers={("zha", IEEE)}, manufacturer="SpookyLab", name="XIAO"
+    )
+    made = _zha_entities(hass, zha_entry, device.id)
+    reg = er.async_get(hass)
+    reg.async_update_entity(made["Mic sensitivity"], hidden_by=er.RegistryEntryHider.USER)   # the user's own choice
+    roles = {
+        "effect_number": made["Effect"],
+        "cue_number": made["Sound cue"],
+        "source_number": made["Sound source (0 off,1 mic,2 remote,3 both)"],
+        "event_sensor": made["Sound event"],
+        "level_sensor": made["Sound level"],
+        "sensitivity_number": made["Mic sensitivity"],
+    }
+    for entity_id in roles.values():
+        hass.states.async_set(entity_id, "0.0")
+    entry = MockConfigEntry(domain=DOMAIN, title="XIAO", unique_id=device.id, data={"device_id": device.id, **roles})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+
+    hidden = {name for name, eid in made.items() if reg.async_get(eid).hidden_by is not None}
+    assert hidden == {"Sound cue", "Sound source (0 off,1 mic,2 remote,3 both)", "Sound event", "Mic sensitivity"}
+    assert reg.async_get(made["Sound cue"]).hidden_by is er.RegistryEntryHider.INTEGRATION
+    # Our entities live on the same ZHA device.
+    ours = [e for e in reg.entities.values() if e.platform == DOMAIN]
+    assert ours and all(e.device_id == device.id for e in ours)
+
+    assert await hass.config_entries.async_remove(entry.entry_id)
+    await hass.async_block_till_done()
+    assert reg.async_get(made["Sound cue"]).hidden_by is None
+    assert reg.async_get(made["Sound event"]).hidden_by is None
+    assert reg.async_get(made["Mic sensitivity"]).hidden_by is er.RegistryEntryHider.USER   # untouched
 
 
 async def test_sound_source_select(hass: HomeAssistant) -> None:

@@ -1,6 +1,6 @@
 """Spooky Sound — let a Halloween light hear the room and follow the soundtrack.
 
-Works on top of the Zigbee entities that ZHA / Zigbee2MQTT create for the
+Works on top of the Zigbee entities that ZHA (or, best effort, Zigbee2MQTT) creates for the
 XIAO Spooky Sound light (it also enhances a NanoC6 Spooky Lights light, which
 has no microphone, by switching its effect to match what's playing):
 
@@ -24,6 +24,7 @@ from homeassistant.core import HomeAssistant, ServiceCall, State, callback
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.typing import ConfigType
@@ -48,6 +49,8 @@ from .const import (
     ROLE_CUE,
     ROLE_DOMAINS,
     ROLE_EFFECT,
+    ROLE_EVENT,
+    ROLE_SOURCE,
     SERVICE_SEND_CUE,
     signal_update,
 )
@@ -159,7 +162,7 @@ class SoundRuntime:
 
 
 def _build_device_info(hass: HomeAssistant, entry: ConfigEntry) -> tuple[DeviceInfo, str | None]:
-    """Attach our entities to the existing ZHA/Z2M device when we know it."""
+    """Attach our entities to the existing ZHA (or Z2M) device when we know it."""
     device_id = entry.data.get(CONF_DEVICE_ID)
     if device_id and (device := dr.async_get(hass).async_get(device_id)):
         if device.identifiers:
@@ -170,6 +173,26 @@ def _build_device_info(hass: HomeAssistant, entry: ConfigEntry) -> tuple[DeviceI
         DeviceInfo(identifiers={(DOMAIN, entry.entry_id)}, manufacturer=MANUFACTURER, model=MODEL, name=entry.title),
         None,
     )
+
+
+# Raw ZHA entities that our own entities fully replace. They clutter the
+# device page ("Sound cue: 41003" means nothing to a person), so they're
+# hidden — never disabled: we still read and write them. Removing Spooky
+# Sound shows them again.
+HIDE_ROLES = (ROLE_CUE, ROLE_SOURCE, ROLE_EVENT)
+
+
+@callback
+def _async_set_raw_hidden(hass: HomeAssistant, roles: dict[str, str], hide: bool) -> None:
+    reg = er.async_get(hass)
+    for role in HIDE_ROLES:
+        entity_id = roles.get(role)
+        if not entity_id or (ent := reg.async_get(entity_id)) is None or ent.platform != "zha":
+            continue
+        if hide and ent.hidden_by is None:
+            reg.async_update_entity(entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION)
+        elif not hide and ent.hidden_by is er.RegistryEntryHider.INTEGRATION:
+            reg.async_update_entity(entity_id, hidden_by=None)
 
 
 def merged_config(entry: ConfigEntry) -> dict[str, Any]:
@@ -232,6 +255,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SoundConfigEntry) -> boo
     entry.runtime_data = runtime
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    _async_set_raw_hidden(hass, runtime.roles, hide=True)
 
     # Started after the platforms, so the switches have restored their state.
     if runtime.media_player:
@@ -252,6 +276,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: SoundConfigEntry) -> boo
 
 async def _async_reload(hass: HomeAssistant, entry: SoundConfigEntry) -> None:
     await hass.config_entries.async_reload(entry.entry_id)
+
+
+async def async_remove_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Give the raw ZHA entities back when Spooky Sound goes."""
+    _async_set_raw_hidden(hass, roles_from_config(merged_config(entry)), hide=False)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SoundConfigEntry) -> bool:

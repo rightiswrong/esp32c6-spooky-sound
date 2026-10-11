@@ -72,3 +72,22 @@ jobs:
           sketch-paths: |
             - firmware/XIAO_SpookySound
           enable-warnings-report: true
+
+  firmware-build-no-mic:
+    name: Firmware build without the microphone (MIC_ENABLED=0)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: arduino/setup-arduino-cli@v2
+      - name: Install the Espressif ESP32 core
+        run: |
+          arduino-cli config init --overwrite
+          arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+          arduino-cli core update-index
+          arduino-cli core install esp32:esp32
+      - name: Compile with MIC_ENABLED=0
+        run: |
+          arduino-cli compile --warnings default \
+            --fqbn esp32:esp32:XIAO_ESP32C6:CDCOnBoot=cdc,PartitionScheme=zigbee_zczr,ZigbeeMode=zczr \
+            --build-property "compiler.cpp.extra_flags=-DMIC_ENABLED=0" \
+            firmware/XIAO_SpookySound

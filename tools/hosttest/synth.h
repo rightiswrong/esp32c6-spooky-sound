@@ -162,6 +162,19 @@ struct Synth {
     return out;
   }
 
+  // An empty A0 port with the pull-down on: ~0 V plus ADC noise. `spikes`
+  // adds occasional switching-noise blips (LED wiring nearby) up to `spikeLsb`.
+  std::vector<uint16_t> emptyPort(float sec, int spikesPerSec = 0, float spikeLsb = 150.0f) {
+    std::vector<uint16_t> out(n(sec));
+    for (auto &v : out) v = (uint16_t)std::clamp((int)std::lround(4.0f + adcNoiseLsb * noise()), 0, 4095);
+    std::uniform_int_distribution<size_t> where(0, out.size() ? out.size() - 1 : 0);
+    for (int k = 0; k < (int)(spikesPerSec * sec); ++k) {
+      size_t at = where(rng);
+      for (size_t j = at; j < std::min(out.size(), at + 3); ++j) out[j] = (uint16_t)uni(spikeLsb * 0.5f, spikeLsb);
+    }
+    return out;
+  }
+
   // Full-scale units → 12-bit ADC samples around the bias, with ADC noise.
   std::vector<uint16_t> toAdc(const std::vector<float> &sig) {
     std::vector<uint16_t> out(sig.size());

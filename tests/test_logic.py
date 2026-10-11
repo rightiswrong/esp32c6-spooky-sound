@@ -136,8 +136,8 @@ class RoleTests(unittest.TestCase):
             ("number", f"{IEEE}-16-13", "Sound source (0 off,1 mic,2 remote,3 both)", logic.ROLE_SOURCE),
             ("number", f"{IEEE}-17-13", "Mic sensitivity", logic.ROLE_SENSITIVITY),
             ("number", f"{IEEE}-18-13", "Sound cue", logic.ROLE_CUE),
-            ("sensor", f"{IEEE}-19-12", "Sound level", logic.ROLE_LEVEL),
-            ("sensor", f"{IEEE}-20-12", "Sound event", logic.ROLE_EVENT),
+            ("sensor", f"{IEEE}-19-12-analog_input", "Sound level", logic.ROLE_LEVEL),
+            ("sensor", f"{IEEE}-20-12-analog_input", "Sound event", logic.ROLE_EVENT),
         ]
         for domain, uid, name, want in cases:
             with self.subTest(name=name):
@@ -150,7 +150,9 @@ class RoleTests(unittest.TestCase):
 
     def test_endpoint_fallback(self):
         self.assertEqual(logic.guess_role("number", f"{IEEE}-18-13", None), logic.ROLE_CUE)
-        self.assertEqual(logic.guess_role("sensor", f"{IEEE}-20-12", None), logic.ROLE_EVENT)
+        self.assertEqual(logic.guess_role("sensor", f"{IEEE}-20-12-analog_input", None), logic.ROLE_EVENT)
+        self.assertEqual(logic.guess_role("sensor", f"{IEEE}-19-12-analog_input", None), logic.ROLE_LEVEL)
+        self.assertIsNone(logic.guess_role("sensor", f"{IEEE}-11-12-analog_input", None))   # LED count
         self.assertEqual(logic.guess_role("number", f"{IEEE}-12-13", None), logic.ROLE_EFFECT)
         self.assertIsNone(logic.guess_role("number", f"{IEEE}-13-13", None))
 
@@ -169,7 +171,7 @@ class RoleTests(unittest.TestCase):
                 self.assertEqual(logic.guess_role(domain, uid), want)
 
     def test_z2m_converter_uses_known_names(self):
-        mjs = (ROOT / "zigbee2mqtt" / "xiao_spooky_sound.mjs").read_text()
+        mjs = (ROOT / "contrib" / "zigbee2mqtt" / "xiao_spooky_sound.mjs").read_text()
         for prop in ("sound_source", "mic_sensitivity", "sound_cue", "sound_level", "sound_event", "effect_index"):
             self.assertIn(f'"{prop}"', mjs)
         self.assertIn('"XIAO-C6-SpookySound"', mjs)

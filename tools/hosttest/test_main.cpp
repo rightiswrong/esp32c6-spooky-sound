@@ -350,6 +350,86 @@ static void testAnalyzerSweep() {
   CHECK(musicOk == musicRuns, "music misbehaved in %d runs", musicRuns - musicOk);
 }
 
+static Recorder listenRaw(const std::vector<uint16_t> &adc, SoundAnalyzer &an) {
+  Recorder rec;
+  rec.an = &an;
+  an.begin(&rec);
+  for (size_t i = 0; i < adc.size(); i += SoundAnalyzer::FRAME)
+    an.feed(&adc[i], std::min<size_t>(SoundAnalyzer::FRAME, adc.size() - i));
+  return rec;
+}
+
+static void testNoMicrophone() {
+  printf("[no mic] an empty A0 port (pulled down): mic declared absent, total silence\n");
+  for (int spikes : {0, 20}) {
+    Synth syn;
+    SoundAnalyzer an;
+    auto r = listenRaw(syn.emptyPort(20.0f, spikes), an);
+    float level = 0, rumble = 0;
+    for (auto &f : r.frames) { level = fmaxf(level, f.level); rumble = fmaxf(rumble, f.rumble); }
+    printf("         %2d spikes/s: presence %d, %zu hits, %zu crackles, %zu events, max level %.2f\n", spikes,
+           an.presence(), r.hits.size(), r.crackles.size(), r.events.size(), level);
+    CHECK(an.presence() == 0, "empty port not detected (presence %d)", an.presence());
+    CHECK(r.hits.empty() && r.crackles.empty() && r.events.empty(), "phantom sounds from an empty port");
+    CHECK(level == 0.0f && rumble == 0.0f, "empty port has level %.2f rumble %.2f", level, rumble);
+  }
+  {
+    Synth syn;
+    SoundAnalyzer an;
+    auto adc = syn.emptyPort(0.3f);
+    listenRaw(adc, an);
+    CHECK(an.presence() == 0, "absence should be known within 0.25 s (presence %d)", an.presence());
+  }
+
+  printf("[no mic] plug the mic in mid-show: no bang from the DC step, then it hears thunder\n");
+  {
+    Synth syn;
+    auto tape = syn.emptyPort(3.0f);
+    auto sig = syn.silence(2.5f);
+    Synth::add(sig, syn.thunder(3.0f, 0.35f, true), sig.size());
+    auto live = syn.toAdc(sig);
+    tape.insert(tape.end(), live.begin(), live.end());
+    SoundAnalyzer an;
+    auto r = listenRaw(tape, an);
+    int early = 0;
+    bool thunderHit = false;
+    for (auto &h : r.hits) {
+      if (h.t < 5.4f) ++early;
+      if (h.t >= 5.4f && h.t <= 5.6f && SoundAnalyzer::isBoom({h.s, h.low, h.high, h.persist})) thunderHit = true;
+    }
+    printf("         presence %d, hits before the thunder %d, thunder struck %d, THUNDER events %d\n", an.presence(), early,
+           thunderHit, r.count(SND_EVT_THUNDER));
+    CHECK(an.presence() == 1, "mic not detected after plugging in");
+    CHECK(early == 0, "%d phantom hits around the plug-in", early);
+    CHECK(thunderHit, "thunder after plug-in not heard");
+    CHECK(r.count(SND_EVT_THUNDER) == 1 && r.count(SND_EVT_LOUD) == 0, "wrong events after plug-in");
+  }
+
+  printf("[no mic] pull the mic out mid-show: silence, absent within ~1.25 s\n");
+  {
+    Synth syn;
+    auto tape = syn.toAdc(syn.music(4.0f, 0.4f, 120));
+    size_t pulled = tape.size();
+    auto gone = syn.emptyPort(3.0f);
+    tape.insert(tape.end(), gone.begin(), gone.end());
+    SoundAnalyzer an;
+    Recorder rec;
+    rec.an = &an;
+    an.begin(&rec);
+    float absentAt = -1;
+    for (size_t i = 0; i < tape.size(); i += SoundAnalyzer::FRAME) {
+      an.feed(&tape[i], std::min<size_t>(SoundAnalyzer::FRAME, tape.size() - i));
+      if (absentAt < 0 && an.presence() == 0) absentAt = (i - (float)pulled) / Synth::FS;
+    }
+    int after = 0;
+    for (auto &h : rec.hits) after += h.t > pulled / Synth::FS + 0.05f;
+    for (auto &e : rec.events) after += e.first > pulled / Synth::FS + 0.05f;
+    printf("         absent %.2f s after pulling, %d sounds afterwards\n", absentAt, after);
+    CHECK(absentAt >= 0 && absentAt <= 1.3f, "unplugged mic declared absent after %.2f s", absentAt);
+    CHECK(after == 0, "%d sounds after unplugging", after);
+  }
+}
+
 static void testAnalyzerSensitivity() {
   printf("[ears] sensitivity: a faint knock is heard at 85, ignored at 10\n");
   Synth syn;
@@ -750,6 +830,35 @@ static void testEndToEnd() {
   runMs(400);
   CHECK(panel.ram[0][0] != 0 || panel.ram[0][1] != 0, "effect name missing on the panel");
 
+  printf("[e2e] no microphone: music cues alone drive the show; nothing phantom reaches HA\n");
+  {
+    Synth syn;
+    g_tape = syn.emptyPort(4.0f, 20);
+    g_tapePos = 0;
+    epByNum(EP_OUTPUT)->fromCoordinator(OUT_AUTO);
+    epByNum(EP_SOUND_SOURCE)->fromCoordinator(SRC_BOTH);
+    epByNum(EP_EFFECT)->fromCoordinator(FX_LIGHTNING);
+    size_t eventsBefore = epByNum(EP_SOUND_EVENT)->reportedIn.size();
+    runMs(3000);
+    CHECK(g_analyzer.presence() == 0, "empty port not detected end-to-end");
+    CHECK(epByNum(EP_SOUND_EVENT)->reportedIn.size() == eventsBefore, "phantom sound events reported to HA");
+    CHECK(!epByNum(EP_SOUND_LEVEL)->reportedIn.empty() && epByNum(EP_SOUND_LEVEL)->reportedIn.back() == 0,
+          "sound level should drop to 0 without a mic");
+    // A storm soundtrack via Sendspin: rumble then a thunderclap cue.
+    epByNum(EP_CUE)->fromCoordinator(encodeCue(301, CUE_RUMBLE, 400));
+    runMs(600);
+    int sky = chainBrightness();
+    epByNum(EP_CUE)->fromCoordinator(encodeCue(302, CUE_THUNDER, 950));
+    int flash = 0;
+    for (int i = 0; i < 25; ++i) { runMs(1); flash = std::max(flash, chainBrightness()); }
+    printf("         sky %d → flash %d within 25 ms of the cue\n", sky, flash);
+    CHECK(flash > sky + 200, "music cue didn't strike without a mic");
+    bool noMicShown = false;
+    for (int x = 0; x < 128; ++x) noMicShown |= panel.ram[7][x] != 0;
+    CHECK(noMicShown, "OLED status line empty");
+    g_tape.clear();
+  }
+
   printf("[e2e] the orange user LED follows the show (onboard output)\n");
   epByNum(EP_OUTPUT)->fromCoordinator(OUT_ONBOARD);
   epByNum(EP_EFFECT)->fromCoordinator(FX_SOLID);
@@ -773,6 +882,7 @@ int main(int argc, char **argv) {
   testAnalyzerScream();
   testAnalyzerSensitivity();
   testAnalyzerSweep();
+  testNoMicrophone();
   testBus();
   testEffectsFuzz();
   testLightningListens();

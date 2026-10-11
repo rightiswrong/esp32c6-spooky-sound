@@ -11,7 +11,12 @@ and listens through a **Grove Analog Microphone**:
 
 A companion **Home Assistant integration (HACS)** connects it to
 **Music Assistant**. It switches effects to match the track that's playing and, with
-**Sendspin**, sends cues timed to the music itself.
+**Sendspin**, sends cues timed to the music itself. It pairs with Home Assistant through
+**ZHA** (Zigbee Home Automation), which is the supported path.
+
+**No microphone? No problem.** The microphone is optional. With an empty A0 port the light
+notices within a quarter of a second and reacts to Music Assistant / Home Assistant cues
+alone, using the same firmware and release. See [Without a microphone](#without-a-microphone).
 
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Validate](https://github.com/rightiswrong/esp32c6-spooky-sound/actions/workflows/validate.yml/badge.svg)](https://github.com/rightiswrong/esp32c6-spooky-sound/actions/workflows/validate.yml)
@@ -31,12 +36,13 @@ A companion **Home Assistant integration (HACS)** connects it to
 |---|---|
 | `firmware/XIAO_SpookySound/` | Arduino sketch for the XIAO ESP32-C6 (Zigbee **router**) |
 | `custom_components/spooky_sound/` | Home Assistant integration (installed by HACS) |
-| `zigbee2mqtt/xiao_spooky_sound.mjs` | Optional external converter if you use Zigbee2MQTT instead of ZHA |
+| `docs/ZHA.md` | Pairing with ZHA: entity names, reporting, re-pairing, troubleshooting |
 | `docs/WIRING.md` | Ports, power, the loopback for LED hot-plug detection, mic placement |
 | `docs/MUSIC_ASSISTANT.md` | Echo Show / View Assist / Sendspin, and timing the lights to the music |
 | `docs/HOW_IT_HEARS.md` | The signal processing, step by step, and how it was tuned |
 | `tools/hosttest/` | Firmware + DSP compiled on a PC: P9813 chain simulator, synthetic thunder / fire / music / screams |
 | `tests/`, `tests_ha/` | Integration logic & firmware-sync tests; integration tests inside a real Home Assistant |
+| `contrib/zigbee2mqtt/` | Best-effort Zigbee2MQTT converter (untested; ZHA is the supported path) |
 
 ## Hardware
 
@@ -44,7 +50,7 @@ A companion **Home Assistant integration (HACS)** connects it to
 |---|---|
 | Seeed Studio XIAO ESP32-C6 | Zigbee + the brains |
 | Seeed Studio Expansion Board Base for XIAO | Grove ports, OLED (shows a live "seismograph"), button |
-| Grove – Analog Microphone | on the **A0/D0** Grove port |
+| Grove – Analog Microphone (optional) | on the **A0/D0** Grove port |
 | Grove – Chainable RGB LED v2.0 (×1…24) | on the **UART** Grove port |
 | 5 V / 2 A USB-C supply | the LEDs want 5 V — see [WIRING](docs/WIRING.md) |
 | optional: 10 kΩ + 18 kΩ resistors, a return wire | live LED counting when you plug modules in and out |
@@ -84,20 +90,27 @@ from the [latest release](https://github.com/rightiswrong/esp32c6-spooky-sound/r
 open [ESPHome Web](https://web.esphome.io) in Chrome or Edge, connect the XIAO over USB-C,
 choose **Install** and pick the file (hold **BOOT** while plugging in if it won't connect).
 
+*Updating later?* Flash the `-app.bin` instead, so the light stays paired (see [`docs/ZHA.md`](docs/ZHA.md#updating-the-firmware)).
+
 **Option B — Arduino IDE 2.x.** Boards Manager → **esp32 by Espressif Systems ≥ 3.3.0**, open
 `firmware/XIAO_SpookySound/XIAO_SpookySound.ino`, then Tools:
 **Board: XIAO_ESP32C6** · **USB CDC On Boot: Enabled** ·
 **Partition Scheme: Zigbee ZCZR 4MB with spiffs** · **Zigbee mode: Zigbee ZCZR (coordinator/router)**.
 Upload; Serial Monitor at 115200 shows the mic levels and LED count.
 
-### 3. Pair it (ZHA)
-Settings → Devices & services → Zigbee Home Automation → **Add device**, then power the XIAO.
-It appears as **SpookyLab XIAO-C6-SpookySound**: a light, two sensors (Grove LEDs, sound level,
-sound event) and number controls. *Re-pairing resets Zigbee:* hold the button **5 s**,
-the LEDs turn red, release.
+### 3. Pair it with ZHA
+Settings → Devices & services → **Zigbee Home Automation** → **Add device**, then power the XIAO.
+It appears as **SpookyLab XIAO-C6-SpookySound**, with:
 
-*Zigbee2MQTT?* Copy `zigbee2mqtt/xiao_spooky_sound.mjs` into `<z2m data>/external_converters/`
-and restart Z2M before pairing.
+* a light;
+* three sensors: Grove LEDs detected, Sound level, Sound event;
+* number controls named after the firmware's endpoint descriptions.
+
+No quirk is needed, since every endpoint is a standard ZCL cluster. To pair it again elsewhere,
+hold the button **5 s** until the LEDs turn red, then release. That resets Zigbee. Details and
+troubleshooting are in [`docs/ZHA.md`](docs/ZHA.md).
+
+*Zigbee2MQTT instead?* A best-effort, untested converter lives in [`contrib/zigbee2mqtt/`](contrib/zigbee2mqtt/).
 
 ### 4. Install the integrations (HACS)
 HACS → ⋮ → **Custom repositories** →
@@ -106,8 +119,11 @@ HACS → ⋮ → **Custom repositories** →
 * optionally `https://github.com/rightiswrong/m5nanoc6-zigbee-lighting-control` — **Spooky Lights**
   (named effects, spotlight, jump-scare button — works on this light as-is)
 
-Restart Home Assistant, then **Add integration → Spooky Sound**: pick the light, check the
-auto-mapped entities, and optionally pick your Music Assistant player.
+Restart Home Assistant, then **Add integration → Spooky Sound**. If the light is the only
+SpookyLab device in ZHA without Spooky Sound, it's already selected. Check the auto-mapped
+entities and optionally pick your Music Assistant player. The three raw ZHA entities that Spooky
+Sound replaces (Sound cue, the Sound source number, the Sound event number) are hidden from the
+device page; removing Spooky Sound shows them again.
 
 [![Open in HACS](https://my.home-assistant.io/badges/hacs_repository.svg)](https://my.home-assistant.io/redirect/hacs_repository/?owner=rightiswrong&repository=esp32c6-spooky-sound&category=integration)
 
@@ -125,7 +141,7 @@ auto-mapped entities, and optionally pick your Music Assistant player.
 | **Light lead time** (number) | How early cues are sent so the flash lands on the sound |
 | **Sendspin** (diagnostic sensor) | Bridge status, frames received, cues sent / dropped |
 | **Test thunder** (button) | One lightning strike, now |
-| Mic sensitivity, Sound level, … | Raw firmware controls from ZHA / Z2M |
+| Mic sensitivity, Sound level, Effect speed, … | Raw firmware controls, straight from ZHA |
 
 Plus the action **`spooky_sound.send_cue`** (thunder · rumble · fire · crackle · beat · peak · clear)
 and the bus event `spooky_sound_detected`.
@@ -159,6 +175,32 @@ and the bus event `spooky_sound_detected`.
 
 ---
 
+## Without a microphone
+
+Leave the A0 port empty and flash the same firmware. Nothing else changes.
+
+* The firmware turns on the A0 pin's internal pull-down, so an empty port reads 0 V instead of
+  floating. A floating ADC pin "hears" random phantom bangs.
+* The analyser checks the raw signal every 0.25 s. A Grove mic idles at half its supply, so a
+  peak below 200 counts means there's no mic. The analyser then stays silent: no hits, crackles,
+  events or loudness reach the effects or Home Assistant.
+* The default **Sound source**, *Mic + Home Assistant*, keeps accepting cues, so the effects are
+  driven purely by what Music Assistant and your automations send. The OLED shows
+  `no mic: HA cues`, and *Sound level* reads 0.
+* Plug a mic in later and it's picked up within 0.25 s. Analysis starts fresh, so the plug-in
+  itself doesn't register as a bang. Pull it out and the light goes back to cues-only within
+  about a second.
+
+What "music only" gets you depends on how Music Assistant reaches your speaker:
+
+| Speaker in Music Assistant | Without a mic you get |
+|---|---|
+| **Sendspin** player (e.g. SendspinDroid on the Echo Show) | Everything: effect switching by track **and** strikes, crackles, rumble and heartbeats timed to the audio |
+| **Home Assistant** media player (e.g. View Assist) | Effect switching by track only. The effects then animate on their own (random strikes, flickering flames) rather than on each thunderclap, because Music Assistant only shares the audio analysis with Sendspin groups |
+
+Need the A0 port for something else? Build with `MIC_ENABLED 0` in `config.h` (or
+`-DMIC_ENABLED=0`). CI compiles that variant on every push.
+
 ## Music Assistant (your Echo Show)
 
 There are two ways in. Both are described in full in [`docs/MUSIC_ASSISTANT.md`](docs/MUSIC_ASSISTANT.md).
@@ -186,7 +228,7 @@ There are two ways in. Both are described in full in [`docs/MUSIC_ASSISTANT.md`]
 
   ![What the analyser hears](docs/img/how-it-hears.png)
 
-* **Zigbee.** Everything Spooky Lights had, plus: sound source (16), mic sensitivity (17), a cue
+* **Zigbee (ZHA).** Everything Spooky Lights had, plus: sound source (16), mic sensitivity (17), a cue
   channel (18: `seq·10000 + type·1000 + param`, exact in a float32), sound level (19) and sound
   event (20: `seq·10 + type`). All standard ZCL clusters, so ZHA needs no quirk.
 * **Threads.** The mic runs in its own FreeRTOS task (above `loop()`, below Zigbee). A `SoundBus`
@@ -222,6 +264,7 @@ SSD1306 panel model and a synthetic sound generator. It covers:
 * ⚠️ **Not yet run on real hardware.** The DSP thresholds are tuned on synthetic sounds. Real
   microphones, rooms and the Echo Show's speaker will differ, and the *Mic sensitivity* control
   and the OLED meter are there to close that gap. Expect the first evening to need a tweak or two.
+* ⚠️ Zigbee2MQTT support (`contrib/zigbee2mqtt/`) is untested; ZHA is the supported path.
 * ⚠️ The Sendspin bridge follows `aiosendspin` 10.x and Music Assistant 2.10's visualizer
   protocol. Both move quickly; if they change, the bridge reports an error and the rest keeps
   working.

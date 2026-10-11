@@ -6,6 +6,7 @@
 #include "esp_adc/adc_continuous.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "driver/gpio.h"
 
 static adc_continuous_handle_t s_handle = nullptr;
 static adc_channel_t s_channel = ADC_CHANNEL_0;
@@ -87,6 +88,12 @@ bool MicInput::begin(uint8_t gpio, SoundAnalyzer *analyzer) {
     Serial.println("[mic] ADC would not start");
     return false;
   }
+#if MIC_PULLDOWN
+  // After the driver has configured the pad (it clears the pulls): an empty
+  // Grove port now reads ~0 V and the analyser can tell nothing is there.
+  gpio_pullup_dis((gpio_num_t)gpio);
+  gpio_pulldown_en((gpio_num_t)gpio);
+#endif
   if (xTaskCreate(micTask, "mic", 4096, nullptr, MIC_TASK_PRIORITY, nullptr) != pdPASS) {
     Serial.println("[mic] could not start the mic task");
     return false;

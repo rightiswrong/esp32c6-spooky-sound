@@ -46,6 +46,9 @@ void SoundAnalyzer::feed(const uint16_t *raw, size_t n) {
       _rawCount = 0;
     }
 
+    if (r > _presMax) _presMax = r;
+    if (++_presCount >= PRESENCE_WINDOW) presenceWindow();
+
     int32_t x = (int32_t)r << 8;                 // Q8
     if (!_dcInit) { _dc = x; _dcInit = true; }
     _dc += (x - _dc) >> 10;                      // DC tracker, ~2.5 Hz corner
@@ -80,6 +83,42 @@ void SoundAnalyzer::feed(const uint16_t *raw, size_t n) {
     _sHigh += (int64_t)_hy2 * _hy2;
     if (++_k == FRAME) frame();
   }
+}
+
+// ---------------------------------------------------------------- presence
+void SoundAnalyzer::presenceWindow() {
+  const bool empty = _presMax < ABSENT_RAW;
+  _presMax = 0;
+  _presCount = 0;
+  if (empty) {
+    if (_absentWins < 255) ++_absentWins;
+    if (_present == -1 || _absentWins >= ABSENT_WINDOWS) _present = 0;
+  } else {
+    _absentWins = 0;
+    if (_present == 0) restart();                 // plugged in: start over cleanly
+    _present = 1;
+  }
+}
+
+// Forget everything learned about the signal (filters, references, the hit
+// in progress). The next sample re-seeds the DC tracker, the next frame the
+// references, and the usual warm-up applies again.
+void SoundAnalyzer::restart() {
+  _dcInit = false;
+  _lp1 = _lp2 = 0;
+  _hx1 = _hy1 = _hx2 = _hy2 = 0;
+  _mx1 = _my1 = _mx2 = _my2 = 0;
+  _sAll = _sLow = _sMid = _sHigh = 0;
+  _k = 0;
+  memset(_midRing, 0, sizeof(_midRing));
+  _age = 0;
+  _f = SoundFeatures();
+  _hit = HIT_IDLE;
+  _clsT = -1;
+  _hitHold = _crHold = 0;
+  _freezeMid = _freezeHigh = 0;
+  _lowHist[0] = _lowHist[1] = _lowHist[2] = 0;
+  _rumbleTime = _fireTime = 0;
 }
 
 // ---------------------------------------------------------------- periodicity
@@ -209,6 +248,8 @@ void SoundAnalyzer::frame() {
   _k = 0;
   const float dt = FRAME_S;
   ++_frames;
+  ++_age;
+  const bool listening = _present == 1;
 
   _lowHist[_lowIdx] = eLow;
   _lowIdx = (uint8_t)((_lowIdx + 1) % 3);
@@ -217,7 +258,7 @@ void SoundAnalyzer::frame() {
   // ---- absolute level & quiet-room floor (dB)
   float db = 10.0f * log10f((eAll + 1.0f) / FULL_SCALE_MS);
   if (db < -100.0f) db = -100.0f;
-  if (_frames == 1) {
+  if (_age == 1) {
     _roomDb = db;
     _bMid = fmaxf(eMid, 1.0f);
     _bLow3 = fmaxf(eLow3, 1.0f);
@@ -231,13 +272,13 @@ void SoundAnalyzer::frame() {
   }
   if (db < _roomDb) _roomDb += (db - _roomDb) * 0.05f;      // quiet arrives quickly
   else _roomDb += (db - _roomDb) * 0.0002f;                 // noise creeps in over ~40 s
-  float target = clamp01((db - _roomDb - 4.0f) / 30.0f);
+  float target = listening ? clamp01((db - _roomDb - 4.0f) / 30.0f) : 0.0f;
   _f.level += (target - _f.level) * (target > _f.level ? 0.25f : 0.03f);
   _f.dbfs = db;
   _f.lowShare = eAll > 1.0f ? eLow / eAll : 0.0f;
   _f.highShare = eAll > 1.0f ? eHigh / eAll : 0.0f;
 
-  const bool warm = _frames > WARMUP_FRAMES;
+  const bool warm = listening && _age > WARMUP_FRAMES;
   _hitHold -= dt;
   _crHold -= dt;
   _sinceThunder += dt;
@@ -309,7 +350,7 @@ void SoundAnalyzer::frame() {
 
   // ---- 5) rumble: smoothed low band (~0.1 s) over a slow floor
   _lowSm += (eLow - _lowSm) * 0.077f;
-  if (_frames < 250) _lowFloor += (_lowSm - _lowFloor) * 0.05f;         // first 2 s: just learn
+  if (_age < 250) _lowFloor += (_lowSm - _lowFloor) * 0.05f;         // first 2 s: just learn
   else if (_lowSm < _lowFloor) _lowFloor += (_lowSm - _lowFloor) * 0.008f;   // falls in ~1 s
   else _lowFloor += (_lowSm - _lowFloor) * 0.001f;                      // rises in ~8 s
   if (_lowFloor < 1.0f) _lowFloor = 1.0f;
@@ -321,7 +362,7 @@ void SoundAnalyzer::frame() {
   _f.rumble += (rTarget - _f.rumble) * 0.05f;
 
   // ---- 6) slow classifications for Home Assistant
-  _rumbleTime = (_f.rumble > 0.45f && _frames > 375) ? _rumbleTime + dt : 0.0f;   // not in the first 3 s
+  _rumbleTime = (_f.rumble > 0.45f && _age > 375) ? _rumbleTime + dt : 0.0f;   // not in the first 3 s
   if (_rumbleTime > 1.0f && _sinceThunder > 8.0f) {
     _sinceThunder = 0;
     if (_sink) _sink->soundEvent(SND_EVT_THUNDER, 0.6f * _f.rumble);

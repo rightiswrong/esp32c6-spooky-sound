@@ -13,6 +13,9 @@
 //  The task runs above loop() and below the Zigbee stack, so a long LED probe
 //  frame never makes the microphone drop samples.
 //
+//  The pin's pull-down is enabled after the ADC starts, so an empty port reads
+//  0 V and SoundAnalyzer can report the microphone as absent.
+//
 //  On a host build begin() just returns false; tests feed the analyser
 //  directly with synthetic audio.
 // =============================================================================

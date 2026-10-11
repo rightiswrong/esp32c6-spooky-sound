@@ -47,6 +47,16 @@
 //                speaker, averages ≈ 0.28.
 //    * LEVEL   : loudness above the quiet-room floor (smoothed).
 //
+//  No microphone? The firmware enables the pin's internal pull-down, so an
+//  empty A0 port reads ~0 instead of floating. Every 0.25 s the analyser
+//  checks the raw ADC peak: a Grove mic idles at half its supply (~2000+
+//  counts), so a peak below 200 counts means nothing is plugged in. After the
+//  first 0.25 s (or 1 s of "nothing" once a mic has been seen) the analyser
+//  goes quiet: no hits, crackles, events, level or rumble — remote (Home
+//  Assistant / Music Assistant) cues drive the effects alone. Plugging a mic
+//  in later restarts the analysis from scratch (the DC step would otherwise
+//  look like an almighty bang).
+//
 //  Strength of any event: s = clamp(log2(E / B) / 6, 0, 1) — so +9 dB → 0.5,
 //  +18 dB → 1.0.
 //
@@ -153,6 +163,13 @@ public:
   void feed(const uint16_t *raw, size_t n);
 
   const SoundFeatures &features() const { return _f; }
+
+  // Microphone presence: -1 not decided yet, 0 absent, 1 present.
+  static constexpr uint16_t ABSENT_RAW = 200;             // peak below this = empty port
+  static constexpr int PRESENCE_WINDOW = SAMPLE_RATE / 4; // 0.25 s
+  static constexpr uint8_t ABSENT_WINDOWS = 4;            // 1 s of nothing to lose a mic
+  int8_t presence() const { return _present; }
+  bool micPresent() const { return _present == 1; }
   const SoundDebug &debug() const { return _dbg; }
   uint32_t frames() const { return _frames; }
   // Raw ADC range seen over the last second (diagnostics: a flat line or a
@@ -191,7 +208,12 @@ private:
   // ---- per-frame state
   SoundFeatures _f;
   SoundDebug _dbg;
-  uint32_t _frames = 0;
+  uint32_t _frames = 0;      // frames ever analysed (liveness)
+  uint32_t _age = 0;         // frames since the last (re)start (warm-up, learning)
+  int8_t _present = -1;
+  uint16_t _presMax = 0;
+  int _presCount = 0;
+  uint8_t _absentWins = 0;
   float _bMid = 0, _bLow3 = 0, _bHigh = 0;           // running means (onset references)
   float _lowSm = 0, _lowFloor = 0, _allSm = 0;       // rumble: smoothed low & full band, floor
   float _prevMid = 0, _prevLow3 = 0, _prevHigh = 0;
@@ -223,6 +245,8 @@ private:
   int _rawCount = 0;
 
   void frame();
+  void restart();
+  void presenceWindow();
   void emitHit(float persistence);
   void classify(float eMid, float eLow3);
   float midPeriodicity() const;

@@ -9,7 +9,6 @@ name: Release
 #   xiao-spooky-sound-<tag>-app.bin         app only, for re-flashing at 0x10000
 #   xiao-spooky-sound-<tag>-bootloader.bin  / -partitions.bin / .elf (debugging)
 #   spooky_sound-<tag>.zip                  the Home Assistant integration
-#   xiao_spooky_sound.mjs                   optional Zigbee2MQTT converter
 #   SHA256SUMS.txt
 # Run it manually (workflow_dispatch) to get the same files as a build artifact
 # without publishing a release.
@@ -92,7 +91,6 @@ jobs:
               0x0 "$b.bootloader.bin" 0x8000 "$b.partitions.bin" 0xe000 "$boot_app0" 0x10000 "$b.bin"
           fi
           (cd custom_components/spooky_sound && zip -qr "../../dist/spooky_sound-$v.zip" . -x '__pycache__/*')
-          cp zigbee2mqtt/xiao_spooky_sound.mjs dist/
           (cd dist && sha256sum * > SHA256SUMS.txt)
           cat dist/SHA256SUMS.txt
 

@@ -1,4 +1,7 @@
-// Zigbee2MQTT external converter for XIAO Spooky Sound (OPTIONAL).
+// Zigbee2MQTT external converter for XIAO Spooky Sound — BEST EFFORT.
+//
+// ZHA is the supported way to run this light (see the README). This converter
+// is kept for Zigbee2MQTT users but isn't part of the tested path.
 //
 // ZHA users don't need this — every endpoint uses standard ZCL clusters and ZHA
 // creates the entities on its own. Zigbee2MQTT doesn't expose unknown devices'

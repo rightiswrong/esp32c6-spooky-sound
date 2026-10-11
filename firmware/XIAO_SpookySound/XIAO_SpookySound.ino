@@ -141,7 +141,25 @@ static bool micAlive(uint32_t now) {
     lastFrames = f;
     lastChange = now ? now : 1;
   }
-  return lastChange && now - lastChange < 500;
+  return lastChange && now - lastChange < 500 && g_analyzer.micPresent();
+}
+
+// Log microphone arrivals and departures (and keep HA's level honest).
+static void watchMicPresence(bool connected) {
+  static int8_t shown = -2;
+  int8_t p = g_analyzer.presence();
+  if (p == shown || p == -1) return;
+  shown = p;
+  if (p == 1) {
+    Serial.println("[mic] microphone detected — listening");
+  } else {
+    Serial.println("[mic] no microphone on the A0 port — following Home Assistant / Music Assistant cues only");
+    if (connected) {                         // don't leave a stale loudness behind
+      zbLevel.setAnalogInput(0);
+      zbLevel.reportAnalogInput();
+    }
+    g_lastLevelReported = 0;
+  }
 }
 
 static uint8_t levelPercent(float dbfs) {
@@ -530,7 +548,8 @@ static void drawDisplay(const ShowState &s, uint8_t chainCount, bool connected, 
   if (micAlive(now))
     snprintf(line, sizeof(line), "%s %4ddB %s", connected ? "ZB" : "..", (int)lroundf(g_analyzer.features().dbfs), evt);
   else
-    snprintf(line, sizeof(line), "%s no mic %s", connected ? "ZB" : "..", evt);
+    snprintf(line, sizeof(line), "%s %s", connected ? "ZB" : "..",
+             g_analyzer.presence() == 0 ? "no mic: HA cues" : "mic starting");
   g_oled.text(0, 7, line);
 }
 
@@ -638,11 +657,12 @@ void loop() {
     zbCount.reportAnalogInput();
     g_countReportPending = false;
   }
+  watchMicPresence(connected);
   reportSound(connected, now);
 
   if (now - lastDiag >= 10000) {
     lastDiag = now;
-    if (g_mic.running())
+    if (g_mic.running() && g_analyzer.micPresent())
       Serial.printf("[mic] raw %u..%u  %.1f dBFS  level %.2f  rumble %.2f  crackle %.1f/s  overruns %u\n",
                     g_analyzer.rawMin(), g_analyzer.rawMax(), g_analyzer.features().dbfs,
                     g_analyzer.features().level, g_analyzer.features().rumble,

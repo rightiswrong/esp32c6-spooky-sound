@@ -61,6 +61,32 @@ def _music_schema(with_keywords: bool) -> vol.Schema:
     return vol.Schema(fields)
 
 
+SPOOKY_MANUFACTURER = "SpookyLab"
+
+
+def _device_selector() -> selector.DeviceSelector:
+    """SpookyLab lights paired with ZHA (preferred) or Zigbee2MQTT."""
+    return selector.DeviceSelector(
+        selector.DeviceSelectorConfig(
+            filter=[
+                selector.DeviceFilterSelectorConfig(integration="zha", manufacturer=SPOOKY_MANUFACTURER),
+                selector.DeviceFilterSelectorConfig(integration="mqtt", manufacturer=SPOOKY_MANUFACTURER),
+            ]
+        )
+    )
+
+
+def unconfigured_zha_lights(hass: HomeAssistant, configured: set[str]) -> list[str]:
+    """Device ids of SpookyLab lights in ZHA that don't have Spooky Sound yet."""
+    found = []
+    for device in dr.async_get(hass).devices.values():
+        if device.manufacturer != SPOOKY_MANUFACTURER or device.id in configured:
+            continue
+        if any(domain == "zha" for domain, _ in device.identifiers):
+            found.append(device.id)
+    return found
+
+
 def guess_entities(hass: HomeAssistant, device_id: str) -> dict[str, str]:
     """Map the device's entities to roles (first match wins)."""
     found: dict[str, str] = {}
@@ -95,9 +121,14 @@ class SpookySoundConfigFlow(ConfigFlow, domain=DOMAIN):
                 if device := dr.async_get(self.hass).async_get(self._device_id):
                     self._title = device.name_by_user or device.name or self._title
             return await self.async_step_entities()
+        # ZHA first: if exactly one SpookyLab light in ZHA is waiting, pick it.
+        configured = {e.unique_id for e in self._async_current_entries() if e.unique_id}
+        waiting = unconfigured_zha_lights(self.hass, configured)
+        schema = vol.Schema({vol.Optional(CONF_DEVICE_ID): _device_selector()})
+        if len(waiting) == 1:
+            schema = self.add_suggested_values_to_schema(schema, {CONF_DEVICE_ID: waiting[0]})
         return self.async_show_form(
-            step_id="user",
-            data_schema=vol.Schema({vol.Optional(CONF_DEVICE_ID): selector.DeviceSelector()}),
+            step_id="user", data_schema=schema, description_placeholders={"found": str(len(waiting))}
         )
 
     async def async_step_entities(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:

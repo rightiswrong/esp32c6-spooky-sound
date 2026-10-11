@@ -43,13 +43,20 @@ def _set_light_states(hass: HomeAssistant, effect: str = "1.0") -> None:
     hass.states.async_set(ROLES["sensitivity_number"], "50.0")
 
 
-async def _setup(hass: HomeAssistant, effect: str = "1.0", **extra) -> MockConfigEntry:
+async def _setup(hass: HomeAssistant, effect: str = "1.0", **extra) -> tuple[MockConfigEntry, list]:
+    """Set up an entry; return it and the captured number.set_value calls.
+
+    The mock goes in AFTER setup: forwarding the number platform loads Home
+    Assistant's real number component, which registers number.set_value.
+    The raw light entities here are plain states, so writes made during setup
+    (there should be none worth checking) go nowhere.
+    """
     _set_light_states(hass, effect)
     entry = MockConfigEntry(domain=DOMAIN, title="Porch", data={"device_id": None, **ROLES, **extra})
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return entry
+    return entry, async_mock_service(hass, "number", "set_value")
 
 
 def _entity(hass: HomeAssistant, platform: str, key: str) -> str:
@@ -109,8 +116,7 @@ async def test_config_flow_maps_zha_entities(hass: HomeAssistant) -> None:
 
 
 async def test_sound_source_select(hass: HomeAssistant) -> None:
-    calls = async_mock_service(hass, "number", "set_value")
-    await _setup(hass)
+    _entry, calls = await _setup(hass)
     select = _entity(hass, "select", "sound_source")
     assert hass.states.get(select).state == "both"
     await hass.services.async_call("select", "select_option", {"entity_id": select, "option": "microphone"}, blocking=True)
@@ -138,8 +144,7 @@ async def test_sound_heard_event(hass: HomeAssistant) -> None:
 
 
 async def test_test_thunder_button_and_send_cue(hass: HomeAssistant) -> None:
-    calls = async_mock_service(hass, "number", "set_value")
-    await _setup(hass)
+    _entry, calls = await _setup(hass)
     await hass.services.async_call(
         "button", "press", {"entity_id": _entity(hass, "button", "test_thunder")}, blocking=True
     )
@@ -151,9 +156,8 @@ async def test_test_thunder_button_and_send_cue(hass: HomeAssistant) -> None:
 
 
 async def test_follows_the_soundtrack(hass: HomeAssistant) -> None:
-    calls = async_mock_service(hass, "number", "set_value")
     hass.states.async_set("media_player.echo_show", "idle")
-    await _setup(hass, media_player="media_player.echo_show")
+    _entry, calls = await _setup(hass, media_player="media_player.echo_show")
     mood = _entity(hass, "sensor", "soundtrack_mood")
     assert hass.states.get(mood).state == "none"
 
@@ -179,15 +183,19 @@ async def test_follows_the_soundtrack(hass: HomeAssistant) -> None:
 
 
 async def test_follow_switch_off_restores(hass: HomeAssistant) -> None:
-    calls = async_mock_service(hass, "number", "set_value")
     hass.states.async_set("media_player.echo_show", "playing", {"media_title": "Heartbeat sound effect"})
-    await _setup(hass, effect="9.0", media_player="media_player.echo_show")
+    entry, calls = await _setup(hass, effect="9.0", media_player="media_player.echo_show")
+    assert entry.runtime_data.mood == "heartbeat"      # (it switched to Tell-Tale Heart during setup)
     switch = _entity(hass, "switch", "follow_music")
     assert hass.states.get(switch).state == "on"
     await hass.services.async_call("switch", "turn_off", {"entity_id": switch}, blocking=True)
     await hass.async_block_till_done()
     effect_writes = [c.data["value"] for c in calls if c.data["entity_id"] == ROLES["effect_number"]]
-    assert effect_writes[0] == 5 and effect_writes[-1] == 9
+    assert effect_writes == [9]                         # Blood Moon is back
+    await hass.services.async_call("switch", "turn_on", {"entity_id": switch}, blocking=True)
+    await hass.async_block_till_done()
+    effect_writes = [c.data["value"] for c in calls if c.data["entity_id"] == ROLES["effect_number"]]
+    assert effect_writes == [9, 5]                      # and the heart again
 
 
 async def test_sendspin_without_server(hass: HomeAssistant) -> None:
@@ -202,13 +210,13 @@ async def test_sendspin_without_server(hass: HomeAssistant) -> None:
 
 
 async def test_unload(hass: HomeAssistant) -> None:
-    entry = await _setup(hass, media_player="media_player.echo_show", sendspin=True)
+    entry, _calls = await _setup(hass, media_player="media_player.echo_show", sendspin=True)
     assert await hass.config_entries.async_unload(entry.entry_id)
     await hass.async_block_till_done()
 
 
 async def test_options_flow(hass: HomeAssistant) -> None:
-    entry = await _setup(hass)
+    entry, _calls = await _setup(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["step_id"] == "init"
     result = await hass.config_entries.options.async_configure(result["flow_id"], ROLES)

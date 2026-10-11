@@ -18,20 +18,24 @@ jobs:
       - uses: hacs/action@main
         with:
           category: integration
+          # Repository topics are set in GitHub's "About" box, not in the repo
+          # itself. Remove this line once they're added (the HACS default list
+          # requires them; custom-repository installs don't).
+          ignore: topics
 
   hassfest:
     name: Hassfest
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: home-assistant/actions/hassfest@master
 
   logic-tests:
     name: Integration logic + firmware sync tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: python -m unittest discover -s tests -v
@@ -40,8 +44,8 @@ jobs:
     name: Integration in Home Assistant (pytest)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
       - run: pip install pytest-homeassistant-custom-component
@@ -51,14 +55,14 @@ jobs:
     name: Firmware logic + DSP (host simulation)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: tools/hosttest/run.sh
 
   firmware-build:
     name: Firmware build (XIAO ESP32-C6, Zigbee router)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: arduino/compile-sketches@v1
         with:
           platforms: |

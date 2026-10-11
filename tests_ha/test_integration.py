@@ -43,7 +43,9 @@ def _set_light_states(hass: HomeAssistant, effect: str = "1.0") -> None:
     hass.states.async_set(ROLES["sensitivity_number"], "50.0")
 
 
-async def _setup(hass: HomeAssistant, effect: str = "1.0", **extra) -> tuple[MockConfigEntry, list]:
+async def _setup(
+    hass: HomeAssistant, effect: str = "1.0", mock_numbers: bool = True, **extra
+) -> tuple[MockConfigEntry, list]:
     """Set up an entry; return it and the captured number.set_value calls.
 
     The mock goes in AFTER setup: forwarding the number platform loads Home
@@ -56,7 +58,7 @@ async def _setup(hass: HomeAssistant, effect: str = "1.0", **extra) -> tuple[Moc
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    return entry, async_mock_service(hass, "number", "set_value")
+    return entry, (async_mock_service(hass, "number", "set_value") if mock_numbers else [])
 
 
 def _entity(hass: HomeAssistant, platform: str, key: str) -> str:
@@ -200,7 +202,7 @@ async def test_follow_switch_off_restores(hass: HomeAssistant) -> None:
 
 async def test_sendspin_without_server(hass: HomeAssistant) -> None:
     """No Music Assistant to talk to: the bridge says so instead of failing setup."""
-    await _setup(hass, sendspin=True)
+    await _setup(hass, mock_numbers=False, sendspin=True)
     status = _entity(hass, "sensor", "sendspin_status")
     assert hass.states.get(status).state == "no_server"
     lead = _entity(hass, "number", "lead_time")

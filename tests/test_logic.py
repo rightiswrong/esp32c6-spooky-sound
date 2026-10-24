@@ -333,22 +333,6 @@ class PackagingTests(unittest.TestCase):
         fw_version = re.search(r'#define FW_VERSION "([^"]+)"', cfg).group(1)
         self.assertEqual(manifest["version"], fw_version)
 
-    def test_esphome_component_matches(self):
-        """The ESPHome strip component: same effect names, same shared code, same version."""
-        import subprocess
-        import sys
-
-        comp = (ROOT / "esphome" / "components" / "spooky_show" / "__init__.py").read_text()
-        names = re.findall(r'"\w+": \((\d+), "([^"]+)"\)', comp)
-        self.assertEqual([n for _, n in names], list(logic.EFFECTS))
-        self.assertEqual([int(i) for i, _ in names], list(range(len(logic.EFFECTS))))
-        sync = subprocess.run([sys.executable, str(ROOT / "tools" / "sync_shared.py"), "--check"], capture_output=True)
-        self.assertEqual(sync.returncode, 0, sync.stdout.decode() + sync.stderr.decode())
-        base = (ROOT / "esphome" / "packages" / "base.yaml").read_text()
-        cfg = (FW / "config.h").read_text()
-        fw_version = re.search(r'#define FW_VERSION "([^"]+)"', cfg).group(1)
-        self.assertIn(f'version: "{fw_version}"', base)
-
     def test_translations_cover_selects_and_events(self):
         import json
 

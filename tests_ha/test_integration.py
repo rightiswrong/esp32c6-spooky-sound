@@ -301,7 +301,7 @@ EFFECT_LIST = [
     "Tell-Tale Heart", "Haunted Chase", "Poltergeist", "Possessed Pumpkin", "Blood Moon",
 ]
 MAC = "a0b1c2d3e4f5"
-# What ESPHome creates for the Gledopto strip firmware (esphome/packages/base.yaml).
+# What ESPHome creates for the Gledopto strip firmware (esp32-overhead-spooky-lighting, packages/base.yaml).
 ESPHOME_ENTITIES = [
     ("light", "light-spooky_overhead", None),
     ("number", "number-effect_speed", "Effect speed"),

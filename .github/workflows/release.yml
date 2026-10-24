@@ -8,6 +8,9 @@ name: Release
 #   xiao-spooky-sound-<tag>-factory.bin     single image, flash at 0x0 (easiest)
 #   xiao-spooky-sound-<tag>-app.bin         app only, for re-flashing at 0x10000
 #   xiao-spooky-sound-<tag>-bootloader.bin  / -partitions.bin / .elf (debugging)
+#   spooky-overhead-<strip>-<tag>-factory.bin / -ota.bin
+#                                           ESPHome firmware for a Gledopto GL-C-211WL
+#                                           (strip = rgbcct, rgbw, rgb)
 #   spooky_sound-<tag>.zip                  the Home Assistant integration
 #   SHA256SUMS.txt
 # Run it manually (workflow_dispatch) to get the same files as a build artifact
@@ -71,6 +74,29 @@ jobs:
       - name: Compile for XIAO ESP32-C6 (Zigbee router)
         run: arduino-cli compile --fqbn "$FQBN" --build-path build --warnings default "$SKETCH"
 
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
+      - name: Compile the ESPHome overhead firmware (Gledopto GL-C-211WL)
+        run: |
+          set -euo pipefail
+          pip install --quiet esphome==2026.10.0
+          mkdir -p dist
+          for strip in rgbcct rgbw rgb; do
+            cfg=esphome/spooky-overhead-$strip.yaml
+            sed -i 's#packages/components.yaml#packages/components-local.yaml#' "$cfg"
+            rm -rf esphome/.esphome/build
+            esphome compile "$cfg"
+            factory=$(find esphome/.esphome/build -name 'firmware.factory.bin' | head -n1)
+            ota=$(find esphome/.esphome/build -name 'firmware.ota.bin' | head -n1)
+            [ -n "$ota" ] || ota=$(find esphome/.esphome/build -name 'firmware.bin' | head -n1)
+            cp "$factory" "dist/spooky-overhead-$strip-$TAG-factory.bin"
+            cp "$ota"     "dist/spooky-overhead-$strip-$TAG-ota.bin"
+            git checkout -- "$cfg"
+          done
+          esphome version > esphome-version.txt
+
       - name: Package
         run: |
           set -euo pipefail
@@ -112,7 +138,19 @@ jobs:
             echo
             echo "Then pair it with ZHA (Add device) and install the integration via HACS — see the README."
             echo
+            echo "## Overhead strip: Gledopto GL-C-211WL (Wi-Fi, ESPHome)"
+            echo
+            echo "Pick the file for your strip: \`rgbcct\` (5 wires: R G B + warm + cold white),"
+            echo "\`rgbw\` (4) or \`rgb\` (3)."
+            echo
+            echo "* From WLED (as shipped): WLED → Config → Security & Updates → Manual OTA,"
+            echo "  upload \`spooky-overhead-<strip>-$v-ota.bin\`. Then join the \"Spooky Overhead setup\""
+            echo "  Wi-Fi to give it your network. Read docs/GLEDOPTO.md first."
+            echo "* Over USB/serial: \`spooky-overhead-<strip>-$v-factory.bin\` at 0x0 (web.esphome.io)."
+            echo
             echo "## Build"
+            echo
+            echo "ESPHome: $(cat esphome-version.txt)"
             echo
             echo "FQBN \`$FQBN\`, Arduino core:"
             echo

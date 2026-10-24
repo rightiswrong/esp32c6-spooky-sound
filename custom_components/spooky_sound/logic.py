@@ -67,6 +67,26 @@ ROLE_DOMAINS: dict[str, str] = {
     ROLE_EVENT: "sensor",
 }
 
+# Other domains a role may be mapped to. The effect role can be a light whose
+# effect list holds the Halloween effects by name (the ESPHome strip firmware),
+# instead of the Zigbee firmware's "Effect" number.
+ROLE_EXTRA_DOMAINS: dict[str, tuple[str, ...]] = {ROLE_EFFECT: ("light",)}
+
+
+def role_domains(role: str) -> list[str]:
+    return [ROLE_DOMAINS[role], *ROLE_EXTRA_DOMAINS.get(role, ())]
+
+
+def is_spooky_effect_list(effects) -> bool:
+    """Does a light's effect list carry the Halloween effects (ESPHome strip)?"""
+    return bool(effects) and sum(1 for name in EFFECTS if name in effects) >= 5
+
+
+def effect_index_from_name(name: str | None) -> int:
+    """A light's current effect → index, or -1 for none / not one of ours."""
+    return EFFECTS.index(name) if name in EFFECTS else -1
+
+
 # Firmware endpoint for each role (config.h EP_*)
 ROLE_ENDPOINTS: dict[str, int] = {
     ROLE_LIGHT: 10,

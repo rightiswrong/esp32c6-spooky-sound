@@ -293,3 +293,92 @@ async def test_survives_odd_states(hass: HomeAssistant, value: str) -> None:
     hass.states.async_set(ROLES["source_number"], value)
     await hass.async_block_till_done()
     assert hass.states.get(_entity(hass, "select", "sound_source")).state in ("microphone", "unavailable", "unknown")
+
+
+# ------------------------------------------------------------- ESPHome strip
+EFFECT_LIST = [
+    "None", "Solid", "Candle Flicker", "Ghost Breath", "Lightning Storm", "Witch's Cauldron",
+    "Tell-Tale Heart", "Haunted Chase", "Poltergeist", "Possessed Pumpkin", "Blood Moon",
+]
+MAC = "a0b1c2d3e4f5"
+# What ESPHome creates for the Gledopto strip firmware (esphome/packages/base.yaml).
+ESPHOME_ENTITIES = [
+    ("light", "light-spooky_overhead", None),
+    ("number", "number-effect_speed", "Effect speed"),
+    ("number", "number-mic_sensitivity", "Mic sensitivity"),
+    ("number", "number-sound_cue", "Sound cue"),
+    ("select", "select-sound_source", "Sound source"),
+    ("sensor", "sensor-sound_level", "Sound level"),
+    ("event", "event-sound_heard", "Sound heard"),
+]
+
+
+async def test_config_flow_maps_esphome_strip(hass: HomeAssistant) -> None:
+    """The overhead strip: its light carries the effects, its number takes cues."""
+    config_entry = MockConfigEntry(domain="esphome")
+    config_entry.add_to_hass(hass)
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=config_entry.entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, MAC)},
+        manufacturer="SpookyLab",
+        model="spooky-overhead",
+        name="Spooky Overhead",
+    )
+    reg = er.async_get(hass)
+    made = {}
+    for domain, suffix, name in ESPHOME_ENTITIES:
+        ent = reg.async_get_or_create(
+            domain, "esphome", f"{MAC}-{suffix}", device_id=device.id, original_name=name, config_entry=config_entry
+        )
+        made[suffix] = ent.entity_id
+    hass.states.async_set(made["light-spooky_overhead"], "on", {"effect_list": EFFECT_LIST, "effect": "None"})
+
+    result = await hass.config_entries.flow.async_init(DOMAIN, context={"source": "user"})
+    result = await hass.config_entries.flow.async_configure(result["flow_id"], {"device_id": device.id})
+    assert result["step_id"] == "entities"
+    suggested = {
+        str(k): k.description["suggested_value"] for k in result["data_schema"].schema if k.description
+    }
+    assert suggested["effect_number"] == made["light-spooky_overhead"]
+    assert suggested["cue_number"] == made["number-sound_cue"]
+    assert not suggested.get("sensitivity_number")      # native entities stay native
+    assert not suggested.get("level_sensor")
+
+
+async def test_follows_the_soundtrack_on_a_light(hass: HomeAssistant) -> None:
+    """Effect role = an ESPHome light: switch its effect by name, restore 'None'."""
+    light = "light.spooky_overhead"
+    hass.states.async_set(light, "on", {"effect_list": EFFECT_LIST, "effect": "None"})
+    hass.states.async_set("number.spooky_overhead_sound_cue", "0")
+    hass.states.async_set("media_player.echo_show", "idle")
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Overhead",
+        data={
+            "device_id": None,
+            "effect_number": light,
+            "cue_number": "number.spooky_overhead_sound_cue",
+            "media_player": "media_player.echo_show",
+        },
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    calls = async_mock_service(hass, "light", "turn_on")
+
+    hass.states.async_set("media_player.echo_show", "playing", {"media_title": "Rain & Thunderstorm, 10 hours"})
+    await hass.async_block_till_done()
+    assert [c.data for c in calls] == [{"entity_id": light, "effect": "Lightning Storm"}]
+
+    hass.states.async_set(light, "on", {"effect_list": EFFECT_LIST, "effect": "Lightning Storm"})
+    hass.states.async_set("media_player.echo_show", "idle")
+    await hass.async_block_till_done()
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=16))
+    await hass.async_block_till_done()
+    assert calls[-1].data == {"entity_id": light, "effect": "None"}
+
+    # A light someone switched off is never switched on by the soundtrack.
+    hass.states.async_set(light, "off", {"effect_list": EFFECT_LIST})
+    hass.states.async_set("media_player.echo_show", "playing", {"media_title": "Crackling Fireplace"})
+    await hass.async_block_till_done()
+    assert len(calls) == 2

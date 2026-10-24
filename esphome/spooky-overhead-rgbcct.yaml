@@ -1,0 +1,25 @@
+# Spooky Overhead for an RGB + warm white + cold white strip (5 channels) on a Gledopto GL-C-211WL.
+#
+# Prebuilt: flash the release's spooky-overhead-rgbcct firmware (docs/GLEDOPTO.md).
+# Your own build: copy this file into the ESPHome dashboard (or "Take control"
+# of the discovered device), add an api encryption key, and install.
+substitutions:
+  name: spooky-overhead
+  friendly_name: Spooky Overhead
+  # Uncomment to change a default (see packages/base.yaml, packages/strip-rgbcct.yaml):
+  # mic_pin: "33"
+  # function_button_pin: GPIO0
+  # red_pin: GPIO19
+  # green_pin: GPIO18
+  # blue_pin: GPIO17
+  # warm_white_pin: GPIO16
+  # cold_white_pin: GPIO4
+
+packages:
+  components: !include packages/components.yaml
+  base: !include packages/base.yaml
+  strip: !include packages/strip-rgbcct.yaml
+
+dashboard_import:
+  package_import_url: github://rightiswrong/esp32c6-spooky-sound/esphome/spooky-overhead-rgbcct.yaml@main
+  import_full_config: false

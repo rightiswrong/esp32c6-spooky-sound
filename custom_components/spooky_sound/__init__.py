@@ -55,7 +55,9 @@ from .const import (
     signal_update,
 )
 from .logic import (
+    EFFECTS as EFFECT_NAMES,
     MOODS_BY_KEY,
+    effect_index_from_name,
     SequenceCounter,
     TokenBucket,
     encode_cue,
@@ -114,11 +116,38 @@ class SoundRuntime:
         entity_id = self.entity(role)
         return self.hass.states.get(entity_id) if entity_id else None
 
+    def effect_is_light(self) -> bool:
+        entity_id = self.entity(ROLE_EFFECT)
+        return bool(entity_id) and entity_id.startswith("light.")
+
     def effect_index(self) -> int | None:
+        """The light's current effect: 0..9, -1 for none (light role), None if unknown."""
         state = self.state(ROLE_EFFECT)
         if state is None or state.state in ("unknown", "unavailable"):
             return None
+        if self.effect_is_light():
+            return effect_index_from_name(state.attributes.get("effect"))
         return to_index(state.state, len(EFFECTS) - 1)
+
+    async def async_set_effect(self, index: int) -> None:
+        """Switch the light's effect (index from EFFECTS; -1 = no effect).
+
+        A light that is off is left alone: following the soundtrack must not
+        switch on a light someone switched off.
+        """
+        entity_id = self.entity(ROLE_EFFECT)
+        if not entity_id:
+            return
+        if not self.effect_is_light():
+            await self.async_set_number(ROLE_EFFECT, max(0, index))
+            return
+        state = self.hass.states.get(entity_id)
+        if state is None or state.state != "on":
+            return
+        name = EFFECT_NAMES[index] if 0 <= index < len(EFFECT_NAMES) else "None"
+        await self.hass.services.async_call(
+            "light", "turn_on", {"entity_id": entity_id, "effect": name}, blocking=True
+        )
 
     def focus(self) -> str | None:
         """Which cues the light wants right now (from its effect, else the mood)."""

@@ -1,0 +1,160 @@
+# =============================================================================
+#  Spooky Overhead — the Halloween effects, with ears, on a Gledopto GL-C-211WL
+#  (ESP32, Wi-Fi, 12–24 V PWM for analog strips). Shared by the RGB, RGBW and
+#  RGBCCT variants; the strip packages add the outputs and the light.
+# =============================================================================
+substitutions:
+  name: spooky-overhead
+  friendly_name: Spooky Overhead
+  # Grove Analog Microphone signal → the controller's IO33 pad (ADC1 channel 5).
+  mic_pin: "33"
+  # The "Function" button. GPIO0 is a guess — check WLED's Config → LED
+  # Preferences → Buttons before flashing (docs/GLEDOPTO.md).
+  function_button_pin: GPIO0
+  pwm_frequency: 4882Hz
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  name_add_mac_suffix: true
+  project:
+    name: SpookyLab.spooky-overhead
+    version: "0.3.0"
+
+esp32:
+  board: esp32dev
+  flash_size: 4MB
+  framework:
+    type: esp-idf
+
+logger:
+
+api:
+  actions:
+    # From an automation or script:  action: esphome.<device>_cue
+    #   data: {cue: thunder, strength: 0.9}
+    # cue: thunder · rumble · fire · crackle · beat · peak · clear
+    # (for crackle, strength = how many, 1–30)
+    - action: cue
+      variables:
+        cue: string
+        strength: float
+      then:
+        - lambda: id(show).cue_named(cue, strength);
+
+ota:
+  - platform: esphome
+
+wifi:
+  # No network baked in: on first boot join the "Spooky Overhead" hotspot (or
+  # use Improv over USB) and pick your Wi-Fi.
+  ap:
+    ssid: "Spooky Overhead setup"
+
+captive_portal:
+
+improv_serial:
+
+spooky_show:
+  id: show
+  microphone_pin: ${mic_pin}
+  sound_level:
+    name: Sound level
+  microphone:
+    name: Microphone
+  sound_heard:
+    name: Sound heard
+
+select:
+  - platform: template
+    id: sound_source
+    name: Sound source
+    icon: mdi:ear-hearing
+    options:
+      - "Off"
+      - "Microphone"
+      - "Home Assistant"
+      - "Mic + Home Assistant"
+    initial_option: "Mic + Home Assistant"
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(show).set_sound_source(i);
+
+number:
+  - platform: template
+    id: effect_speed
+    name: Effect speed
+    icon: mdi:speedometer
+    min_value: 1
+    max_value: 100
+    step: 1
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(show).set_speed(x);
+  - platform: template
+    id: mic_sensitivity
+    name: Mic sensitivity
+    icon: mdi:microphone-settings
+    entity_category: config
+    min_value: 1
+    max_value: 100
+    step: 1
+    initial_value: 50
+    optimistic: true
+    restore_value: true
+    on_value:
+      - lambda: id(show).set_sensitivity(x);
+  # Written by the Spooky Sound integration (Music Assistant sync): leave alone.
+  - platform: template
+    id: sound_cue
+    name: Sound cue
+    icon: mdi:weather-lightning
+    entity_category: config
+    mode: box
+    min_value: 0
+    max_value: 9999999
+    step: 1
+    initial_value: 0
+    optimistic: true
+    on_value:
+      - lambda: if (x > 0) id(show).cue(x);
+
+binary_sensor:
+  - platform: gpio
+    id: function_button
+    name: Function button
+    internal: true
+    pin:
+      number: ${function_button_pin}
+      mode: INPUT_PULLUP
+      inverted: true
+      ignore_strapping_warning: true
+    on_click:
+      # click: next effect (after the last one: no effect)
+      - min_length: 30ms
+        max_length: 800ms
+        then:
+          - lambda: |-
+              auto *l = id(overhead);
+              uint32_t next = (l->get_current_effect_index() + 1) % (l->get_effect_count() + 1);
+              auto call = l->turn_on();
+              call.set_effect(next);
+              call.perform();
+      # hold 1–5 s: on/off
+      - min_length: 1s
+        max_length: 5s
+        then:
+          - light.toggle: overhead
+
+button:
+  - platform: restart
+    name: Restart
+  - platform: template
+    name: Channel test
+    icon: mdi:led-strip-variant
+    entity_category: diagnostic
+    on_press:
+      - script.execute: channel_test

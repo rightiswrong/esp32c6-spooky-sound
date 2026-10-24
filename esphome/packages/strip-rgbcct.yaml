@@ -1,0 +1,92 @@
+# The RGBCCT strip: an RGB + warm white + cold white strip (5 channels).
+# Terminal order on the GL-C-211WL label, top to bottom: V+, GPIO19, 18, 17, 16, 4.
+# The pin for each colour is a default — confirm with WLED's LED Preferences
+# before flashing, or with the "Channel test" button after (docs/GLEDOPTO.md).
+substitutions:
+  red_pin: GPIO19
+  green_pin: GPIO18
+  blue_pin: GPIO17
+  warm_white_pin: GPIO16
+  cold_white_pin: GPIO4
+
+output:
+  - platform: ledc
+    id: out_red
+    pin: ${red_pin}
+    frequency: ${pwm_frequency}
+  - platform: ledc
+    id: out_green
+    pin: ${green_pin}
+    frequency: ${pwm_frequency}
+  - platform: ledc
+    id: out_blue
+    pin: ${blue_pin}
+    frequency: ${pwm_frequency}
+  - platform: ledc
+    id: out_warm_white
+    pin: ${warm_white_pin}
+    frequency: ${pwm_frequency}
+  - platform: ledc
+    id: out_cold_white
+    pin: ${cold_white_pin}
+    frequency: ${pwm_frequency}
+
+light:
+  - platform: rgbww
+    id: overhead
+    name: None                  # the light takes the device's name
+    icon: mdi:ceiling-light
+    red: out_red
+    green: out_green
+    blue: out_blue
+    warm_white: out_warm_white
+    cold_white: out_cold_white
+    cold_white_color_temperature: 6500 K
+    warm_white_color_temperature: 2700 K
+    gamma_correct: 2.2          # the effects were tuned at 2.2 (Spooky Lights)
+    default_transition_length: 500ms
+    restore_mode: RESTORE_DEFAULT_OFF
+    effects:
+      - spooky: {effect: candle}
+      - spooky: {effect: ghost}
+      - spooky: {effect: lightning}
+      - spooky: {effect: cauldron}
+      - spooky: {effect: heartbeat}
+      - spooky: {effect: chase}
+      - spooky: {effect: poltergeist}
+      - spooky: {effect: pumpkin}
+      - spooky: {effect: blood_moon}
+      - spooky: {effect: solid}
+
+script:
+  # Lights each channel alone for 1.5 s, in order, to check the wiring.
+  - id: channel_test
+    mode: restart
+    then:
+      - light.turn_off: {id: overhead, transition_length: 0s}
+      - delay: 300ms
+      - logger.log: "Channel test: RED (${red_pin})"
+      - output.set_level: {id: out_red, level: 60%}
+      - delay: 1500ms
+      - output.turn_off: out_red
+      - delay: 300ms
+      - logger.log: "Channel test: GREEN (${green_pin})"
+      - output.set_level: {id: out_green, level: 60%}
+      - delay: 1500ms
+      - output.turn_off: out_green
+      - delay: 300ms
+      - logger.log: "Channel test: BLUE (${blue_pin})"
+      - output.set_level: {id: out_blue, level: 60%}
+      - delay: 1500ms
+      - output.turn_off: out_blue
+      - delay: 300ms
+      - logger.log: "Channel test: WARM WHITE (${warm_white_pin})"
+      - output.set_level: {id: out_warm_white, level: 60%}
+      - delay: 1500ms
+      - output.turn_off: out_warm_white
+      - delay: 300ms
+      - logger.log: "Channel test: COLD WHITE (${cold_white_pin})"
+      - output.set_level: {id: out_cold_white, level: 60%}
+      - delay: 1500ms
+      - output.turn_off: out_cold_white
+      - delay: 300ms

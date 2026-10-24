@@ -89,7 +89,7 @@ class MusicFollower:
             if self._saved_effect is None:
                 self._saved_effect = self.runtime.effect_index()
             self._applied_mood = mood
-            await self.runtime.async_set_number(ROLE_EFFECT, EFFECTS.index(MOODS_BY_KEY[mood].effect))
+            await self.runtime.async_set_effect(EFFECTS.index(MOODS_BY_KEY[mood].effect))
             return
         # No (followed) mood: put the old effect back after a short grace
         # period, so a pause or a track change doesn't flicker the show.
@@ -107,4 +107,4 @@ class MusicFollower:
         saved, self._saved_effect = self._saved_effect, None
         self._applied_mood = None
         if saved is not None and self.runtime.entity(ROLE_EFFECT):
-            await self.runtime.async_set_number(ROLE_EFFECT, saved)
+            await self.runtime.async_set_effect(saved)

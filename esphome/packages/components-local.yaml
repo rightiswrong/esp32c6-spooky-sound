@@ -1,0 +1,6 @@
+# Build against this checkout (CI, or after cloning the repo).
+external_components:
+  - source:
+      type: local
+      path: components    # relative to the main config file (the esphome/ folder)
+    components: [spooky_show]

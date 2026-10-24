@@ -44,6 +44,14 @@ Tested: 20 s of empty port, with and without 20 switching-noise spikes per secon
 nothing. Plugging a mic in mid-show gives no phantom hit, then the next thunderclap is heard and
 reported. Pulling it out gives silence, with the mic marked absent 0.99 s later.
 
+### On the Gledopto (ESPHome)
+
+The overhead strip runs the identical analyser on a classic ESP32. Samples come from IO33 through
+ESP-IDF's continuous ADC driver (TYPE1 records on the classic ESP32 and TYPE2 on the C6, picked at
+compile time), on ADC1 so Wi-Fi doesn't block it. They arrive at the same 32 kHz, 12 bits, and the
+same pull-down and empty-port detection apply. The mic task is pinned to the second core. The classic
+ESP32 has an FPU, but the fixed-point filters are kept so both boards hear identically.
+
 ## 2. Bands, in fixed point
 
 The C6 has no FPU, so the per-sample work is integer: about 10 multiply-accumulates per sample,

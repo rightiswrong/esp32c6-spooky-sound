@@ -30,7 +30,7 @@ from .const import (
     ROLE_SENSITIVITY,
     ROLE_SOURCE,
 )
-from .logic import guess_role
+from .logic import guess_role, is_spooky_effect_list, role_domains
 
 ROLE_ORDER = (ROLE_EFFECT, ROLE_CUE, ROLE_SOURCE, ROLE_EVENT, ROLE_LEVEL, ROLE_SENSITIVITY, ROLE_LIGHT)
 USEFUL_ROLES = (ROLE_EFFECT, ROLE_CUE, ROLE_SOURCE, ROLE_EVENT)
@@ -40,7 +40,7 @@ MUSIC_KEYS = (CONF_MEDIA_PLAYER, CONF_SENDSPIN, CONF_SENDSPIN_HOST, CONF_LEAD_MS
 def _entities_schema() -> vol.Schema:
     return vol.Schema(
         {
-            vol.Optional(role): selector.EntitySelector(selector.EntitySelectorConfig(domain=ROLE_DOMAINS[role]))
+            vol.Optional(role): selector.EntitySelector(selector.EntitySelectorConfig(domain=role_domains(role)))
             for role in ROLE_ORDER
         }
     )
@@ -71,6 +71,9 @@ def _device_selector() -> selector.DeviceSelector:
             filter=[
                 selector.DeviceFilterSelectorConfig(integration="zha", manufacturer=SPOOKY_MANUFACTURER),
                 selector.DeviceFilterSelectorConfig(integration="mqtt", manufacturer=SPOOKY_MANUFACTURER),
+                # The ESPHome strip firmware (Gledopto GL-C-211WL), over Wi-Fi. Home
+                # Assistant takes the manufacturer from its project name "SpookyLab.…".
+                selector.DeviceFilterSelectorConfig(integration="esphome", manufacturer=SPOOKY_MANUFACTURER),
             ]
         )
     )
@@ -91,9 +94,20 @@ def guess_entities(hass: HomeAssistant, device_id: str) -> dict[str, str]:
     """Map the device's entities to roles (first match wins)."""
     found: dict[str, str] = {}
     for entry in er.async_entries_for_device(er.async_get(hass), device_id, include_disabled_entities=False):
+        # The ESPHome strip already has native select / sensor / event entities;
+        # Spooky Sound only needs its light (effects) and its "Sound cue" number.
+        if entry.platform == "esphome" and entry.domain not in ("light", "number"):
+            continue
+        if entry.platform == "esphome" and entry.domain == "number" and "cue" not in (entry.unique_id or "").lower() + (entry.original_name or "").lower():
+            continue
         role = guess_role(entry.domain, entry.unique_id, entry.original_name, entry.name, entry.entity_id)
         if role and role not in found:
             found[role] = entry.entity_id
+    # The ESPHome strip has no effect number: its light carries the effects.
+    if ROLE_EFFECT not in found and (light_id := found.get(ROLE_LIGHT)):
+        state = hass.states.get(light_id)
+        if state is not None and is_spooky_effect_list(state.attributes.get("effect_list")):
+            found[ROLE_EFFECT] = light_id
     return found
 
 

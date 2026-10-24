@@ -8,7 +8,7 @@
 
 // Keep in sync with custom_components/spooky_sound/manifest.json "version"
 // (the release workflow refuses to publish if they differ from the tag).
-#define FW_VERSION "0.2.0"
+#define FW_VERSION "0.3.0"
 
 // ---------------------------------------------------------------- Board pins
 // XIAO ESP32-C6 pin map (arduino-esp32 variants/XIAO_ESP32C6/pins_arduino.h):

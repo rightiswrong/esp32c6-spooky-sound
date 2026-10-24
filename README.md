@@ -18,6 +18,10 @@ A companion **Home Assistant integration (HACS)** connects it to
 notices within a quarter of a second and reacts to Music Assistant / Home Assistant cues
 alone, using the same firmware and release. See [Without a microphone](#without-a-microphone).
 
+**Overhead too.** The same effects and the same ears also run as **ESPHome Wi-Fi firmware** on a
+**Gledopto GL-C-211WL** strip controller, for hidden overhead lighting. See
+[Spooky Overhead](#spooky-overhead-gledopto-gl-c-211wl-wi-fi).
+
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-41BDF5.svg)](https://hacs.xyz/)
 [![Validate](https://github.com/rightiswrong/esp32c6-spooky-sound/actions/workflows/validate.yml/badge.svg)](https://github.com/rightiswrong/esp32c6-spooky-sound/actions/workflows/validate.yml)
 [![Release](https://img.shields.io/github/v/release/rightiswrong/esp32c6-spooky-sound)](https://github.com/rightiswrong/esp32c6-spooky-sound/releases/latest)
@@ -36,6 +40,8 @@ alone, using the same firmware and release. See [Without a microphone](#without-
 |---|---|
 | `firmware/XIAO_SpookySound/` | Arduino sketch for the XIAO ESP32-C6 (Zigbee **router**) |
 | `custom_components/spooky_sound/` | Home Assistant integration (installed by HACS) |
+| `esphome/` | **Spooky Overhead**: ESPHome firmware for a Gledopto GL-C-211WL analog strip controller (the `spooky_show` component + RGB / RGBW / RGBCCT configs) |
+| `docs/GLEDOPTO.md` | Spooky Overhead: reading the pins from WLED, wiring the mic, flashing, Home Assistant |
 | `docs/ZHA.md` | Pairing with ZHA: entity names, reporting, re-pairing, troubleshooting |
 | `docs/WIRING.md` | Ports, power, the loopback for LED hot-plug detection, mic placement |
 | `docs/MUSIC_ASSISTANT.md` | Echo Show / View Assist / Sendspin, and timing the lights to the music |
@@ -216,6 +222,25 @@ There are two ways in. Both are described in full in [`docs/MUSIC_ASSISTANT.md`]
 
 ---
 
+## Spooky Overhead (Gledopto GL-C-211WL, Wi-Fi)
+
+For hidden overhead lighting on a 12–24 V analog strip, next to the Grove lights rather than
+instead of them. The **Gledopto GL-C-211WL** is a classic ESP32 with no Zigbee radio, so this
+part is **ESPHome** firmware. It's built from the same effects engine and sound analyser as the XIAO:
+
+* a **Grove Analog Microphone** on the board's **IO33** pad works exactly like the XIAO's: a
+  thunderclap flashes the ceiling in the next frame, and a fireplace flickers it;
+* without a mic, Home Assistant / Music Assistant cues drive it (`esphome.<device>_cue`, or the
+  Spooky Sound integration, which can now use a light's named effects as its *Effect*);
+* six virtual flames are folded into one ceiling colour per effect, so a crackle is a warm flare, not a
+  strobe. On RGBCCT strips lightning uses the **cold-white** LEDs.
+
+Prebuilt `rgbcct`, `rgbw` and `rgb` firmware is attached to each release. **Read
+[`docs/GLEDOPTO.md`](docs/GLEDOPTO.md) first.** The pin mapping comes from the terminal label and
+should be checked in WLED before flashing.
+
+---
+
 ## How it works (short version)
 
 * **Listening.** The microphone is sampled by DMA at 32 kHz and decimated to 16 kHz. It is split
@@ -243,7 +268,7 @@ There are two ways in. Both are described in full in [`docs/MUSIC_ASSISTANT.md`]
 ## Testing
 
 ```bash
-tools/hosttest/run.sh                   # firmware + DSP on a PC (needs g++); --trace DIR for CSVs
+tools/hosttest/run.sh                   # firmware + DSP on a PC (needs g++), incl. the overhead strip; --trace DIR for CSVs
 python3 -m unittest discover -s tests   # integration logic + firmware ⇄ integration sync checks
 pip install pytest-homeassistant-custom-component && python3 -m pytest   # integration in HA
 python3 tools/plot_traces.py DIR        # redraw docs/img/how-it-hears.png from --trace output
@@ -264,6 +289,8 @@ SSD1306 panel model and a synthetic sound generator. It covers:
 * ⚠️ **Not yet run on real hardware.** The DSP thresholds are tuned on synthetic sounds. Real
   microphones, rooms and the Echo Show's speaker will differ, and the *Mic sensitivity* control
   and the OLED meter are there to close that gap. Expect the first evening to need a tweak or two.
+* ⚠️ Spooky Overhead (Gledopto) is compiled by CI and simulated on a PC, but not yet run on the
+  controller; its GPIO-to-colour mapping and Function button pin are unconfirmed (see [GLEDOPTO](docs/GLEDOPTO.md)).
 * ⚠️ Zigbee2MQTT support (`contrib/zigbee2mqtt/`) is untested; ZHA is the supported path.
 * ⚠️ The Sendspin bridge follows `aiosendspin` 10.x and Music Assistant 2.10's visualizer
   protocol. Both move quickly; if they change, the bridge reports an error and the rest keeps

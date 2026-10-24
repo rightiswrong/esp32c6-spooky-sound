@@ -23,7 +23,11 @@
 //  single-precision ZCL float exactly.
 // =============================================================================
 #pragma once
-#include <Arduino.h>
+#if __has_include(<Arduino.h>)
+#include <Arduino.h>               // Arduino builds and the host test stubs
+#else
+#include "freertos/FreeRTOS.h"     // ESP-IDF builds (ESPHome): portMUX_TYPE & co.
+#endif
 #include <stdint.h>
 #include "SoundAnalyzer.h"
 
